@@ -1,36 +1,27 @@
-from pathlib import Path
-
-from langchain_community.vectorstores import FAISS
-
 from app.config import settings
 from app.embeddings.factory import create_embeddings
 from app.processing.mapper import chunks_to_documents
-
+from langchain_community.vectorstores import SupabaseVectorStore
+from app.embeddings.supabase_client import get_supabase_client
 
 class IndexingService:
     def __init__(self):
         self.embeddings = create_embeddings()
+        self.supabase_client = get_supabase_client()
 
-    def index_chunks(self, chunks: list) -> FAISS:
+    def index_chunks(self, chunks: list):
         documents = chunks_to_documents(chunks)
 
         if not documents:
             raise ValueError("No documents to index")
 
-        index_path = Path(settings.faiss_index_path)
+        vectorstore = SupabaseVectorStore(
+            client=self.supabase_client,
+            embedding=self.embeddings,
+            table_name=settings.supabase_table_name,
+            query_name="match_documents",
+        )
 
-        if index_path.exists():
-            vectorstore = FAISS.load_local(
-                folder_path=str(index_path),
-                embeddings=self.embeddings,
-                allow_dangerous_deserialization=True,
-            )
-            vectorstore.add_documents(documents)
-        else:
-            vectorstore = FAISS.from_documents(
-                documents=documents,
-                embedding=self.embeddings,
-            )
+        vectorstore.add_documents(documents)
 
-        vectorstore.save_local(str(index_path))
         return vectorstore

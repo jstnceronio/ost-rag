@@ -230,7 +230,7 @@ def parse_confluence_page(page: ConfluencePage) -> ParsedDocument:
             "parent_id": page.parent_id,
             "status": page.status,
             "version": page.version,
-            "created_at": page.created_at,
-            "updated_at": page.updated_at,
+            "created_at": page.created_at.isoformat() if page.created_at else None,
+            "updated_at": page.updated_at.isoformat() if page.updated_at else None,
         },
     )
