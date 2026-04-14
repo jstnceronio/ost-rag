@@ -28,7 +28,6 @@ def main():
     print(f"Fetched pages: {len(pages)}")
     print(f"Built parsed documents: {len(documents)}")
     print(f"Built chunks: {len(chunks)}")
-    print(f"Indexed documents: {vectorstore.index.ntotal}")
     print(f"Query: {TEST_QUERY}")
 
     for index, match in enumerate(matches, start=1):
