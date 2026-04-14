@@ -1,7 +1,11 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    # OpenAI Settings
+    openai_model: str = "gpt-4.1"
     openai_api_key: str
+
+    # Confluence Settings
     confluence_api_key: str
     confluence_base_url: str
 
