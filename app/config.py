@@ -11,8 +11,13 @@ class Settings(BaseSettings):
 
     # Embedding Stuff
     embedding_model: str = "text-embedding-3-small"
-    vector_store_provider: str = "faiss"
+    vector_store_provider: str = "supabase"
     faiss_index_path: str = "./data/faiss_index"
+
+    # Supabase
+    supabase_url: str
+    supabase_service_key: str
+    supabase_table_name: str
 
     class Config:
         env_file = ".env"
