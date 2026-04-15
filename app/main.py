@@ -7,9 +7,11 @@ from app.embeddings.retriever import RetrieverService
 from app.processing.chunker import chunk_documents
 from app.processing.models import ParsedDocument
 from app.processing.normalize import parse_confluence_page
+from app.config import settings
+
 
 ICT_WIKI_SPACE = "720898"
-TEST_PAGE_LIMIT = None
+TEST_PAGE_LIMIT = 5
 TEST_QUERY = "Wie kann ich die VPN einrichten?"
 
 # TODO: Move me to a /sync endpoint
@@ -20,23 +22,16 @@ def main():
     for page in pages:
         documents.append(parse_confluence_page(page))
 
-    chunks = chunk_documents(documents)
-    vectorstore = IndexingService().index_chunks(chunks)
-    retriever = RetrieverService().get_retriever()
-    matches = retriever.invoke(TEST_QUERY)
-
-    print(f"Fetched pages: {len(pages)}")
-    print(f"Built parsed documents: {len(documents)}")
-    print(f"Built chunks: {len(chunks)}")
-    print(f"Query: {TEST_QUERY}")
-
-    for index, match in enumerate(matches, start=1):
-        print("=" * 80)
-        print(f"Match {index}")
-        print(f"Title: {match.metadata.get('title')}")
-        print(f"Chunk ID: {match.metadata.get('chunk_id')}")
-        print(f"Heading Path: {' > '.join(match.metadata.get('heading_path', []))}")
-        print(match.page_content)
+    from app.services.chat_service import ChatService
+    chat_service = ChatService()
+    result = chat_service.answer_question(TEST_QUERY)
+    
+    print("=" * 80)
+    print(f"ANSWER:\n{result.answer}\n")
+    print("SOURCES:")
+    for src in result.sources:
+        print(f"- {src.get('title')} | {src.get('url')}")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
