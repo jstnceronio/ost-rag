@@ -9,10 +9,10 @@ from app.processing.models import ParsedDocument
 from app.processing.normalize import parse_confluence_page
 
 ICT_WIKI_SPACE = "720898"
-TEST_PAGE_LIMIT = 5
+TEST_PAGE_LIMIT = None
 TEST_QUERY = "Wie kann ich die VPN einrichten?"
 
-
+# TODO: Move me to a /sync endpoint
 def main():
     client = ConfluenceClient(base_url=settings.confluence_base_url, api_token=settings.confluence_api_key)
     pages = client.get_pages_by_space_id(space_id=ICT_WIKI_SPACE, limit=TEST_PAGE_LIMIT)
