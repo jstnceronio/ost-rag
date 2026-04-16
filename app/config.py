@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     supabase_service_key: str
     supabase_table_name: str
 
+    # API Settings
+    allowed_cors_origins: str = "*"
+
     class Config:
         env_file = ".env"
 
