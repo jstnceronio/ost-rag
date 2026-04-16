@@ -48,7 +48,12 @@ class ChatService:
             sources=matches
         )
 
+        seen = set()
         return ChatResult(
             answer=answer,
-            sources=[_document_to_source(match) for match in matches],
+            sources=[
+                _document_to_source(m) for m in matches
+                if not (doc_id := m.metadata.get("doc_id"))
+                or (doc_id not in seen and not seen.add(doc_id))
+            ],
         )
