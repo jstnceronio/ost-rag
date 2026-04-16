@@ -20,6 +20,7 @@ class IndexingService:
             embedding=self.embeddings,
             table_name=settings.supabase_table_name,
             query_name="match_documents",
+            chunk_size=100,
         )
 
         vectorstore.add_documents(documents)
