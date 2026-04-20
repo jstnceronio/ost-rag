@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     supabase_table_name: str
 
     # API Settings
+    api_key: str
     allowed_cors_origins: str = "*"
 
     class Config:
