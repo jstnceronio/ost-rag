@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     faiss_index_path: str = "./data/faiss_index"
 
     # Supabase
-    supabase_url: str
-    supabase_service_key: str
-    supabase_table_name: str
+    supabase_url: str | None = None
+    supabase_service_key: str | None = None
+    supabase_table_name: str | None = None
 
     # API Settings
     api_key: str

@@ -1,12 +1,16 @@
 from app.embeddings.supabase_client import get_supabase_client
 from app.embeddings.factory import create_embeddings
+from app.config import settings
 
 class CacheService:
     def __init__(self):
-        self.supabase_client = get_supabase_client()
+        self.supabase_client = self._create_supabase_client_if_configured()
         self.embeddings = create_embeddings()
 
     def check_cache(self, query_embedding: list[float], threshold: float = 0.98) -> tuple[str, list[dict]] | None:
+        if self.supabase_client is None:
+            # no caching locally, since it's for testing
+            return None
         response = self.supabase_client.rpc(
                 "match_cache_queries",
                 {
@@ -30,6 +34,8 @@ class CacheService:
 
 
     def save_to_cache(self, query_text: str, query_embedding: list[float], llm_response: str, sources: list):
+        if self.supabase_client is None:
+            return
         source_metadata_list = []
         added_doc_ids = set()
         
@@ -66,6 +72,8 @@ class CacheService:
 
 
     def _validate_sources(self, cached_sources_metadata: list[dict]) -> bool:
+        if self.supabase_client is None:
+            return False
         
         if not cached_sources_metadata:
             return True
@@ -75,8 +83,6 @@ class CacheService:
         if not doc_ids:
             return True
 
-        from app.config import settings
-        
         try:
             response = self.supabase_client.table(settings.supabase_table_name)\
                 .select("metadata")\
@@ -109,8 +115,16 @@ class CacheService:
 
 
     def _delete_expired_cache(self, cache_id: str):
+        if self.supabase_client is None:
+            return
 
         try:
             self.supabase_client.table("semantic_cache").delete().eq("id", cache_id).execute()
         except Exception as e:
             print(f"Error deleting expired cache entry: {e}")
+
+    @staticmethod
+    def _create_supabase_client_if_configured():
+        if not settings.supabase_url or not settings.supabase_service_key:
+            return None
+        return get_supabase_client()
