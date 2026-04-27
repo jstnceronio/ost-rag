@@ -5,14 +5,40 @@ from langchain_community.vectorstores import FAISS, SupabaseVectorStore
 from app.config import settings
 from app.embeddings.supabase_client import get_supabase_client
 
+_UPSERT_BATCH_SIZE = 20
+
 
 def create_vector_store(embedding, documents: list | None = None):
     provider = settings.vector_store_provider.lower()
 
     if provider == "supabase":
         # use the remote embedding storage
+        client = get_supabase_client()
+
+        if documents:
+            for i in range(0, len(documents), _UPSERT_BATCH_SIZE):
+                batch = documents[i : i + _UPSERT_BATCH_SIZE]
+                texts = [doc.page_content for doc in batch]
+                vectors = embedding.embed_documents(texts)
+
+                rows = [
+                    {
+                        "content": doc.page_content,
+                        "metadata": doc.metadata,
+                        "embedding": vector,
+                    }
+                    for doc, vector in zip(batch, vectors)
+                ]
+
+                client.table(settings.supabase_table_name).upsert(
+                    rows,
+                    on_conflict="chunk_id",
+                ).execute()
+
+                print(f"  Upserted {min(i + _UPSERT_BATCH_SIZE, len(documents))}/{len(documents)} chunks...")
+
         return SupabaseVectorStore(
-            client=get_supabase_client(),
+            client=client,
             embedding=embedding,
             table_name=settings.supabase_table_name,
             query_name="match_documents",

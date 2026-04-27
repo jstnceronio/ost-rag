@@ -11,7 +11,7 @@ from app.config import settings
 
 
 ICT_WIKI_SPACE = "720898"
-TEST_PAGE_LIMIT = None  
+TEST_PAGE_LIMIT = 5 
 TEST_QUERY = "Wie kann ich die VPN einrichten?"
 
 # TODO: Move me to a /sync endpoint
