@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    networks:
+      - coolify
+      - afayfugc2bp2ng84u6840sti
+
+networks:
+  coolify:
+    external: true
+  afayfugc2bp2ng84u6840sti:
+    external: true
