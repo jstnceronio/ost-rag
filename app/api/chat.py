@@ -1,46 +1,47 @@
-import hmac
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
-from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 
+from app.api.deps import limiter, verify_api_key
 from app.api.models import ChatRequest, ChatResponse, ChatSource
 from app.services.chat_service import ChatService
+from app.services.sync_service import start_daily_sync
 from app.config import settings
 
-
-limiter = Limiter(key_func=get_remote_address)
-
-app = FastAPI()
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.allowed_cors_origins.split(",")],
-    allow_credentials=True,
-    allow_methods=["POST"],
-    allow_headers=["Content-Type", "X-API-Key"],
-)
-
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-def verify_api_key(key: str | None = Depends(_api_key_header)) -> None:
-    if not key or not hmac.compare_digest(key, settings.api_key):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+from app.api import sync as sync_module
 
 
 chat_service: ChatService | None = None
 
 
-@app.on_event("startup")
-def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global chat_service
     chat_service = ChatService()
+    task = asyncio.create_task(
+        start_daily_sync(settings.confluence_space_id, hour=settings.sync_hour)
+    )
+    yield
+    task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.allowed_cors_origins.split(",")],
+    allow_credentials=True,
+    allow_methods=["POST"],
+    allow_headers=["Content-Type", "X-API-Key"],
+)
+
+app.include_router(sync_module.router)
 
 
 @app.post("/chat", response_model=ChatResponse)

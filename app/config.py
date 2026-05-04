@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     # Confluence Settings
     confluence_api_key: str
     confluence_base_url: str
+    confluence_space_id: str
+    sync_hour: int = 6
 
     # Embedding Stuff
     embedding_model: str = "text-embedding-3-small"

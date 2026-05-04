@@ -9,12 +9,8 @@ class HistoryMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000, description="The user's question")
-    history: list[HistoryMessage] = Field(
-        default_factory=list,
-        max_length=10,
-        description="Previous conversation turns, oldest first",
-    )
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[HistoryMessage] = Field(default_factory=list, max_length=10)
 
 
 class ChatSource(BaseModel):
@@ -28,3 +24,13 @@ class ChatSource(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[ChatSource] = Field(default_factory=list)
+
+
+class SyncRequest(BaseModel):
+    space_id: str
+    limit: int | None = Field(default=None, gt=0)
+
+
+class SyncResponse(BaseModel):
+    pages_indexed: int
+    chunks_indexed: int
