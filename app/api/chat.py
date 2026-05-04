@@ -1,4 +1,5 @@
 import hmac
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,14 +8,28 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from app.config import settings
 from app.api.models import ChatRequest, ChatResponse, ChatSource
 from app.services.chat_service import ChatService
-from app.config import settings
 
+"""
+Run me locally like this: uvicorn app.api.chat:app --reload
+"""
 
+# FastAPI won't automatically reject if header is missing
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+def verify_api_key(key: str | None = Depends(_api_key_header)) -> None:
+    if not key or not hmac.compare_digest(key, settings.api_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+@asynccontextmanager
+async def lifespan(api: FastAPI):
+    api.state.chat_service = ChatService()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 limiter = Limiter(key_func=get_remote_address)
-
-app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -26,30 +41,11 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-def verify_api_key(key: str | None = Depends(_api_key_header)) -> None:
-    if not key or not hmac.compare_digest(key, settings.api_key):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-
-
-chat_service: ChatService | None = None
-
-
-@app.on_event("startup")
-def startup_event() -> None:
-    global chat_service
-    chat_service = ChatService()
-
 
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute;300/day")
-def chat(
-    request: Request,
-    payload: ChatRequest,
-    _: None = Depends(verify_api_key),
-) -> ChatResponse:
+def chat(request: Request, payload: ChatRequest, _: None = Depends(verify_api_key)) -> ChatResponse:
+    chat_service = getattr(request.app.state, "chat_service", None)
     if chat_service is None:
         raise HTTPException(status_code=500, detail="Chat service is not initialized")
 
