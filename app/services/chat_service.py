@@ -11,13 +11,18 @@ class ChatService:
         self._cache_service = CacheService()
         self._embeddings = create_embeddings()
 
-    def answer_question(self, question: str) -> ChatResult:
+    def answer_question(
+        self, question: str, history: list[dict] | None = None
+    ) -> ChatResult:
         cleaned_question = question.strip()
         if not cleaned_question:
             raise ValueError("Frage darf nicht leer sein")
 
-        query_vector = self._embeddings.embed_query(cleaned_question)
-        cache_hit = self._cache_service.check_cache(query_vector)
+        has_history = bool(history)
+
+        if not has_history:
+            query_vector = self._embeddings.embed_query(cleaned_question)
+            cache_hit = self._cache_service.check_cache(query_vector)
 
         if cache_hit:
             cached_answer, cached_sources = cache_hit
@@ -41,20 +46,23 @@ class ChatService:
         answer = self._llm_service.generate_answer(
             question=cleaned_question,
             context=context,
+            history=history,
         )
 
-        self._cache_service.save_to_cache(
-            query_text=cleaned_question,
-            query_embedding=query_vector,
-            llm_response=answer,
-            sources=matches
-        )
+        if not has_history:
+            self._cache_service.save_to_cache(
+                query_text=cleaned_question,
+                query_embedding=query_vector,
+                llm_response=answer,
+                sources=matches,
+            )
 
         seen = set()
         return ChatResult(
             answer=answer,
             sources=[
-                _document_to_source(m) for m in matches
+                _document_to_source(m)
+                for m in matches
                 if not (doc_id := m.metadata.get("doc_id"))
                 or (doc_id not in seen and not seen.add(doc_id))
             ],

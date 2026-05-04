@@ -54,7 +54,10 @@ def chat(
         raise HTTPException(status_code=500, detail="Chat service is not initialized")
 
     try:
-        result = chat_service.answer_question(payload.question)
+        result = chat_service.answer_question(
+            payload.question,
+            history=[h.model_dump() for h in payload.history],
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
