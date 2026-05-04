@@ -51,4 +51,5 @@ env.bak/
 venv.bak/
 
 .idea/
-
+.DS_Store
+resources/evaluation_runs/

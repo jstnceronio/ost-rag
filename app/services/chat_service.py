@@ -29,9 +29,11 @@ class ChatService:
                         "doc_id": src.get("doc_id"),
                         "chunk_id": src.get("chunk_id"),
                         "heading_path": src.get("heading_path", []),
-                        "url": src.get("url")
-                    } for src in cached_sources
-                ]
+                        "url": src.get("url"),
+                        "content": src.get("content"),
+                    }
+                    for src in cached_sources
+                ],
             )
 
         matches = self._retriever.invoke(cleaned_question)
