@@ -28,3 +28,15 @@ class ChatSource(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[ChatSource] = Field(default_factory=list)
+
+
+class SyncRequest(BaseModel):
+    space_id: str = Field(default="720898", description="Confluence space ID to sync")
+    limit: int = Field(default=5, ge=1, description="Maximum number of pages to fetch")
+
+
+class SyncResponse(BaseModel):
+    space_id: str
+    pages_fetched: int
+    documents_parsed: int
+    chunks_indexed: int

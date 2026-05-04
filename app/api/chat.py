@@ -9,8 +9,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.config import settings
-from app.api.models import ChatRequest, ChatResponse, ChatSource
+from app.api.models import ChatRequest, ChatResponse, ChatSource, SyncRequest, SyncResponse
 from app.services.chat_service import ChatService
+from app.services.sync_service import SyncService
 
 """
 Run me locally like this: uvicorn app.api.chat:app --reload
@@ -26,6 +27,7 @@ def verify_api_key(key: str | None = Depends(_api_key_header)) -> None:
 @asynccontextmanager
 async def lifespan(api: FastAPI):
     api.state.chat_service = ChatService()
+    api.state.sync_service = SyncService()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -61,3 +63,17 @@ def chat(request: Request, payload: ChatRequest, _: None = Depends(verify_api_ke
         answer=result.answer,
         sources=[ChatSource(**source) for source in result.sources],
     )
+
+
+@app.post("/sync", response_model=SyncResponse)
+def sync(request: Request, payload: SyncRequest, _: None = Depends(verify_api_key)) -> SyncResponse:
+    sync_service = getattr(request.app.state, "sync_service", None)
+    if sync_service is None:
+        raise HTTPException(status_code=500, detail="Sync service is not initialized")
+
+    try:
+        result = sync_service.sync(space_id=payload.space_id, limit=payload.limit)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    return SyncResponse(**result)
