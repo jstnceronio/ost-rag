@@ -77,15 +77,15 @@ Neben einem händisch gepflegten Dataset kann auch ein JSONL-Dataset mit RAGAS a
 Vom Repo-Root aus:
 
 ```bash
-uv run python scripts/generate_ragas_testset.py --space-id 720898 --testset-size 20
+uv run python scripts/generate_testcases.py --space-id 720898 --testset-size 20
 ```
 
 Nützliche Varianten:
 
 ```bash
-uv run python scripts/generate_ragas_testset.py --space-id 720898 --testset-size 10 --page-limit 20
-uv run python scripts/generate_ragas_testset.py --space-id 720898 --testset-size 20 --output resources/datasets/generated_cases.jsonl
-uv run python scripts/generate_ragas_testset.py --space-id 720898 --testset-size 20 --min-chars 500
+uv run python scripts/generate_testcases.py --space-id 720898 --testset-size 10 --page-limit 20
+uv run python scripts/generate_testcases.py --space-id 720898 --testset-size 20 --output resources/datasets/generated_cases.jsonl
+uv run python scripts/generate_testcases.py --space-id 720898 --testset-size 20 --min-chars 500
 ```
 
 Wichtige Parameter:
