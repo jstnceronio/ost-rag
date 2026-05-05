@@ -11,14 +11,6 @@ Dabei handelt es sich nicht um einen `pytest`-Test, sondern um ein Skript, das:
 
 ## Ausführen
 
-Vom Repo-Root aus:
-
-```bash
-uv run python scripts/ragas_metrics.py
-```
-
-Alternativ direkt als Modul:
-
 ```bash
 uv run python -m app.evaluation.runner
 ```

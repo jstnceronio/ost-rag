@@ -7,8 +7,8 @@ from statistics import mean
 from typing import Any
 
 from app.config import settings
+from app.evaluation.constants import DEFAULT_RESULTS_DIR, DEFAULT_DATASET_PATH, ROOT_DIR
 from app.evaluation.models import EvaluationCase, MetricSet
-from app.evaluation.runner import DEFAULT_RESULTS_DIR, DEFAULT_DATASET_PATH, ROOT_DIR
 
 
 def _string_values(sources: list[dict[str, str | list[str] | None]], *, key: str) -> list[str]:

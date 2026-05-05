@@ -2,7 +2,6 @@ import asyncio
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -19,16 +18,13 @@ from ragas.metrics.collections import (
 )
 
 from app.config import settings
+from app.evaluation.constants import DEFAULT_DATASET_PATH, DEFAULT_RESULTS_DIR
 from app.evaluation.dataset import load_evaluation_cases
 from app.evaluation.helpers import _parse_args, _summarize_results, _git_revision, _write_run_artifacts, _score_case, \
     _string_values
 from app.evaluation.models import MetricSet, EvaluationCase, RunnerConfig, EvaluationResult
 from app.services.helpers import _build_context, _document_to_source
 from app.services.llm_service import LLMService
-
-ROOT_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_DATASET_PATH = ROOT_DIR / "resources" / "datasets" / "test_cases.jsonl"
-DEFAULT_RESULTS_DIR = ROOT_DIR / "resources" / "evaluation_runs"
 
 
 async def main() -> None:
