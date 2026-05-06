@@ -6,6 +6,13 @@ from unittest.mock import Mock
 from langchain_core.documents import Document
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    from app.api.deps import limiter
+    limiter._storage.reset()
+    yield
+
+
 def make_confluence_page(**kwargs) -> ConfluencePage:
     defaults = dict(
         id="123",

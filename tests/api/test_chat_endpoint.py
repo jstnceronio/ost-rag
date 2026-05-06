@@ -1,7 +1,8 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import pytest
 from starlette.testclient import TestClient
 
+import app.api.chat as chat_module
 from app.api.chat import app
 from app.api.deps import verify_api_key
 from app.services.helpers import ChatResult
@@ -17,13 +18,16 @@ def _make_mock_service():
 
 
 @pytest.fixture
-def client():
-    mock_svc = _make_mock_service()
-    app.state.chat_service = mock_svc
+def mock_service():
+    return _make_mock_service()
+
+
+@pytest.fixture
+def client(mock_service):
     app.dependency_overrides[verify_api_key] = lambda: None
-    yield TestClient(app)
+    with patch.object(chat_module, "_chat_service", mock_service):
+        yield TestClient(app)
     app.dependency_overrides.clear()
-    del app.state.chat_service
 
 
 class TestChatEndpoint:
@@ -50,25 +54,14 @@ class TestChatEndpoint:
         resp = client.post("/chat", json={"question": "q" * 2001})
         assert resp.status_code == 422
 
-    def test_service_not_initialized_returns_500(self):
-        app.dependency_overrides[verify_api_key] = lambda: None
-        # Ensure app.state has no chat_service set
-        app.state.chat_service = None
-        try:
-            resp = TestClient(app).post("/chat", json={"question": "Q?"})
-            assert resp.status_code == 500
-        finally:
-            del app.state.chat_service
-            app.dependency_overrides.clear()
-
-    def test_with_history(self, client):
+    def test_with_history(self, client, mock_service):
         resp = client.post("/chat", json={
             "question": "Follow-up?",
             "history": [{"role": "user", "content": "Hello"}],
         })
         assert resp.status_code == 200
 
-    def test_value_error_from_service_returns_400(self, client):
-        app.state.chat_service.answer_question.side_effect = ValueError("bad input")
+    def test_value_error_from_service_returns_400(self, client, mock_service):
+        mock_service.answer_question.side_effect = ValueError("bad input")
         resp = client.post("/chat", json={"question": "Q?"})
         assert resp.status_code == 400

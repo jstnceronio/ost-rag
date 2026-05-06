@@ -47,9 +47,9 @@ class TestSyncEndpoint:
         resp = TestClient(app).post("/sync", json={"space_id": "SPACE1"})
         assert resp.status_code == 401
 
-    def test_missing_space_id_returns_422(self, client):
+    def test_missing_space_and_page_id_returns_400(self, client):
         resp = client.post("/sync", json={})
-        assert resp.status_code == 422
+        assert resp.status_code == 400
 
     def test_negative_limit_returns_422(self, client):
         resp = client.post("/sync", json={"space_id": "SPACE1", "limit": -1})
