@@ -15,13 +15,9 @@ from app.api import sync as sync_module
 from app.config import settings
 
 
-chat_service: ChatService | None = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global chat_service
-    chat_service = ChatService()
+    app.state.chat_service = ChatService()
     task = asyncio.create_task(
         start_daily_sync(settings.confluence_space_id, hour=settings.sync_hour)
     )
