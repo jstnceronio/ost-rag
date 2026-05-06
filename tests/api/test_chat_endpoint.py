@@ -2,24 +2,28 @@ from unittest.mock import Mock
 import pytest
 from starlette.testclient import TestClient
 
-import app.api.chat as chat_module
 from app.api.chat import app
 from app.api.deps import verify_api_key
 from app.services.helpers import ChatResult
 
 
-@pytest.fixture
-def client():
+def _make_mock_service():
     mock_svc = Mock()
     mock_svc.answer_question.return_value = ChatResult(
         answer="Here is the answer.",
         sources=[{"title": "T", "doc_id": "1", "chunk_id": "1:0", "heading_path": [], "url": None}],
     )
-    chat_module.chat_service = mock_svc
+    return mock_svc
+
+
+@pytest.fixture
+def client():
+    mock_svc = _make_mock_service()
+    app.state.chat_service = mock_svc
     app.dependency_overrides[verify_api_key] = lambda: None
     yield TestClient(app)
     app.dependency_overrides.clear()
-    chat_module.chat_service = None
+    del app.state.chat_service
 
 
 class TestChatEndpoint:
@@ -47,14 +51,14 @@ class TestChatEndpoint:
         assert resp.status_code == 422
 
     def test_service_not_initialized_returns_500(self):
-        original = chat_module.chat_service
-        chat_module.chat_service = None
         app.dependency_overrides[verify_api_key] = lambda: None
+        # Ensure app.state has no chat_service set
+        app.state.chat_service = None
         try:
             resp = TestClient(app).post("/chat", json={"question": "Q?"})
             assert resp.status_code == 500
         finally:
-            chat_module.chat_service = original
+            del app.state.chat_service
             app.dependency_overrides.clear()
 
     def test_with_history(self, client):
@@ -65,6 +69,6 @@ class TestChatEndpoint:
         assert resp.status_code == 200
 
     def test_value_error_from_service_returns_400(self, client):
-        chat_module.chat_service.answer_question.side_effect = ValueError("bad input")
+        app.state.chat_service.answer_question.side_effect = ValueError("bad input")
         resp = client.post("/chat", json={"question": "Q?"})
         assert resp.status_code == 400
