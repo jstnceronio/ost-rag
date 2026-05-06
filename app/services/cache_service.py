@@ -46,6 +46,7 @@ class CacheService:
                 url = doc.metadata.get("url")
                 heading_path = doc.metadata.get("heading_path", [])
                 chunk_id = doc.metadata.get("chunk_id")
+                content = doc.page_content.strip()
                 
                 if doc_id and version is not None and doc_id not in added_doc_ids:
                     added_doc_ids.add(doc_id)
@@ -55,7 +56,8 @@ class CacheService:
                         "title": title,
                         "url": url,
                         "heading_path": heading_path,
-                        "chunk_id": chunk_id
+                        "chunk_id": chunk_id,
+                        "content": content,
                     })
 
         data_to_insert = {

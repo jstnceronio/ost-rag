@@ -49,4 +49,5 @@ def _document_to_source(document: Document) -> dict[str, str | list[str] | None]
         "chunk_id": metadata.get("chunk_id"),
         "heading_path": heading_path if isinstance(heading_path, list) else [],
         "url": metadata.get("url"),
+        "content": document.page_content.strip(),
     }

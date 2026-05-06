@@ -24,21 +24,22 @@ class ChatService:
             query_vector = self._embeddings.embed_query(cleaned_question)
             cache_hit = self._cache_service.check_cache(query_vector)
 
-            if cache_hit:
-                cached_answer, cached_sources = cache_hit
-                return ChatResult(
-                    answer=cached_answer,
-                    sources=[
-                        {
-                            "title": src.get("title"),
-                            "doc_id": src.get("doc_id"),
-                            "chunk_id": src.get("chunk_id"),
-                            "heading_path": src.get("heading_path", []),
-                            "url": src.get("url"),
-                        }
-                        for src in cached_sources
-                    ],
-                )
+        if cache_hit:
+            cached_answer, cached_sources = cache_hit
+            return ChatResult(
+                answer=cached_answer,
+                sources=[
+                    {
+                        "title": src.get("title"),
+                        "doc_id": src.get("doc_id"),
+                        "chunk_id": src.get("chunk_id"),
+                        "heading_path": src.get("heading_path", []),
+                        "url": src.get("url"),
+                        "content": src.get("content"),
+                    }
+                    for src in cached_sources
+                ],
+            )
 
         matches = self._retriever.invoke(cleaned_question)
         context = _build_context(matches)

@@ -10,9 +10,9 @@ from app.api.deps import limiter, verify_api_key
 from app.api.models import ChatRequest, ChatResponse, ChatSource
 from app.services.chat_service import ChatService
 from app.services.sync_service import start_daily_sync
-from app.config import settings
 
 from app.api import sync as sync_module
+from app.config import settings
 
 
 chat_service: ChatService | None = None
@@ -46,11 +46,8 @@ app.include_router(sync_module.router)
 
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute;300/day")
-def chat(
-    request: Request,
-    payload: ChatRequest,
-    _: None = Depends(verify_api_key),
-) -> ChatResponse:
+def chat(request: Request, payload: ChatRequest, _: None = Depends(verify_api_key)) -> ChatResponse:
+    chat_service = getattr(request.app.state, "chat_service", None)
     if chat_service is None:
         raise HTTPException(status_code=500, detail="Chat service is not initialized")
 
