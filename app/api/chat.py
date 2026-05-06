@@ -1,5 +1,3 @@
-from contextlib import asynccontextmanager
-
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -13,13 +11,9 @@ from app.api import sync as sync_module
 from app.config import settings
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    app.state.chat_service = ChatService()
-    yield
+_chat_service = ChatService()
 
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -37,12 +31,8 @@ app.include_router(sync_module.router)
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute;300/day")
 def chat(request: Request, payload: ChatRequest, _: None = Depends(verify_api_key)) -> ChatResponse:
-    chat_service = getattr(request.app.state, "chat_service", None)
-    if chat_service is None:
-        raise HTTPException(status_code=500, detail="Chat service is not initialized")
-
     try:
-        result = chat_service.answer_question(
+        result = _chat_service.answer_question(
             payload.question,
             history=[h.model_dump() for h in payload.history],
         )
