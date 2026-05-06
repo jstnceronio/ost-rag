@@ -1,0 +1,52 @@
+from datetime import datetime
+import pytest
+from app.confluence.models import ConfluencePage
+from app.processing.models import ParsedDocument, Chunk
+from unittest.mock import Mock
+from langchain_core.documents import Document
+
+
+def make_confluence_page(**kwargs) -> ConfluencePage:
+    defaults = dict(
+        id="123",
+        title="Test Page",
+        space_id="SPACE1",
+        parent_id=None,
+        status="current",
+        url="https://wiki.example.com/pages/123",
+        body_storage="<p>Hello world</p>",
+        version=1,
+        created_at=datetime(2024, 1, 1),
+        updated_at=datetime(2024, 6, 1),
+    )
+    return ConfluencePage(**{**defaults, **kwargs})
+
+
+def make_parsed_document(**kwargs) -> ParsedDocument:
+    defaults = dict(
+        doc_id="123",
+        title="Test Page",
+        url="https://wiki.example.com/pages/123",
+        text="Test content",
+        sections=[],
+        metadata={"version": 1, "url": "https://wiki.example.com/pages/123"},
+    )
+    return ParsedDocument(**{**defaults, **kwargs})
+
+
+def make_chunk(**kwargs) -> Chunk:
+    defaults = dict(
+        chunk_id="123:chunk:0",
+        doc_id="123",
+        text="Page: Test\n\nSome text",
+        title="Test",
+        heading_path=[],
+        metadata={},
+    )
+    return Chunk(**{**defaults, **kwargs})
+
+
+def make_document(**kwargs) -> Document:
+    metadata = kwargs.pop("metadata", {"doc_id": "123", "title": "Test", "chunk_id": "123:chunk:0", "heading_path": []})
+    content = kwargs.pop("content", "Some content")
+    return Document(page_content=content, metadata=metadata)
