@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class HistoryMessage(BaseModel):
@@ -27,7 +27,8 @@ class ChatResponse(BaseModel):
 
 
 class SyncRequest(BaseModel):
-    space_id: str
+    space_id: str | None = None
+    page_id: str | None = None
     limit: int | None = Field(default=None, gt=0)
 
 

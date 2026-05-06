@@ -58,6 +58,42 @@ class TestGetPage:
         assert exc.value.status_code == 404
 
 
+class TestGetPageTree:
+    def test_returns_root_and_child_pages(self):
+        client = _make_client()
+        client.session.get.side_effect = [
+            _ok_response(_page_payload("1", "Root")),
+            _ok_response({"results": [_page_payload("2", "Child")]}),
+            _ok_response({"results": []}),
+        ]
+
+        pages = client.get_page_tree("1")
+
+        assert [page.id for page in pages] == ["1", "2"]
+
+    def test_recurses_into_child_pages(self):
+        client = _make_client()
+        client.session.get.side_effect = [
+            _ok_response(_page_payload("1", "Root")),
+            _ok_response({"results": [_page_payload("2", "Child")]}),
+            _ok_response({"results": [_page_payload("3", "Grandchild")]}),
+            _ok_response({"results": []}),
+        ]
+
+        pages = client.get_page_tree("1")
+
+        assert [page.id for page in pages] == ["1", "2", "3"]
+
+    def test_respects_limit(self):
+        client = _make_client()
+        client.session.get.return_value = _ok_response(_page_payload("1", "Root"))
+
+        pages = client.get_page_tree("1", limit=1)
+
+        assert [page.id for page in pages] == ["1"]
+        assert client.session.get.call_count == 1
+
+
 class TestGetPagesBySpaceId:
     def test_returns_pages(self):
         client = _make_client()

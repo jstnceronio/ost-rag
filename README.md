@@ -251,9 +251,16 @@ Chunks are upserted on `chunk_id`, so syncing the same space repeatedly is safe 
 { "space_id": "720898", "limit": 50 }
 ```
 
+To index one page and all of its nested subpages, use the root page ID instead:
+
+```json
+{ "page_id": "123456789" }
+```
+
 | Field | Type | Constraints |
 |---|---|---|
-| `space_id` | `string` | required |
+| `space_id` | `string` | optional; required if `page_id` is omitted |
+| `page_id` | `string` | optional; when set, indexes this page and its descendant pages |
 | `limit` | `integer` | optional, > 0 — omit to index the entire space |
 
 **Response Body**

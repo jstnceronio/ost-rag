@@ -42,6 +42,23 @@ class TestRunSync:
             space_id="SPACE1", limit=1
         )
 
+    def test_syncs_page_tree_when_page_id_is_provided(self):
+        pages = [_make_page("1"), _make_page("2")]
+        with patch("app.services.sync_service.ConfluenceClient") as mock_client_cls, \
+             patch("app.services.sync_service.IndexingService") as mock_idx_cls:
+
+            mock_client_cls.return_value.get_page_tree.return_value = pages
+            mock_idx_cls.return_value.index_chunks.return_value = None
+
+            page_count, chunk_count = run_sync(page_id="1")
+
+        assert page_count == 2
+        assert chunk_count >= 2
+        mock_client_cls.return_value.get_page_tree.assert_called_once_with(
+            page_id="1", limit=None
+        )
+        mock_client_cls.return_value.get_pages_by_space_id.assert_not_called()
+
     def test_empty_pages_returns_zero_counts(self):
         with patch("app.services.sync_service.ConfluenceClient") as mock_client_cls, \
              patch("app.services.sync_service.IndexingService") as mock_idx_cls:
@@ -53,6 +70,7 @@ class TestRunSync:
 
         assert page_count == 0
         assert chunk_count == 0
+        mock_idx_cls.assert_not_called()
 
     def test_index_chunks_called(self):
         pages = [_make_page("1")]

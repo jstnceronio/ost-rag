@@ -14,12 +14,20 @@ def sync(
     payload: SyncRequest,
     _: None = Depends(verify_api_key),
 ) -> SyncResponse:
-    pages, chunks = run_sync(space_id=payload.space_id, limit=payload.limit)
+    if not payload.page_id and not payload.space_id:
+        raise HTTPException(status_code=400, detail="Page or Space ID required")
+
+    pages, chunks = run_sync(
+        space_id=payload.space_id,
+        page_id=payload.page_id,
+        limit=payload.limit,
+    )
 
     if pages == 0:
+        target = payload.page_id or payload.space_id
         raise HTTPException(
             status_code=404,
-            detail=f"No pages found in Confluence space '{payload.space_id}'.",
+            detail=f"No pages found in Confluence target '{target}'.",
         )
 
     return SyncResponse(pages_indexed=pages, chunks_indexed=chunks)

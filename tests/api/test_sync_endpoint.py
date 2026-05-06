@@ -30,7 +30,13 @@ class TestSyncEndpoint:
         with patch("app.api.sync.run_sync", return_value=(2, 10)) as mock_sync:
             resp = client.post("/sync", json={"space_id": "SPACE1", "limit": 2})
         assert resp.status_code == 200
-        mock_sync.assert_called_once_with(space_id="SPACE1", limit=2)
+        mock_sync.assert_called_once_with(space_id="SPACE1", page_id=None, limit=2)
+
+    def test_with_page_id(self, client):
+        with patch("app.api.sync.run_sync", return_value=(3, 12)) as mock_sync:
+            resp = client.post("/sync", json={"page_id": "123"})
+        assert resp.status_code == 200
+        mock_sync.assert_called_once_with(space_id=None, page_id="123", limit=None)
 
     def test_no_pages_found_returns_404(self, client):
         with patch("app.api.sync.run_sync", return_value=(0, 0)):
