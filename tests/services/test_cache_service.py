@@ -5,6 +5,7 @@ from app.services.cache_service import CacheService
 
 def _service_no_supabase():
     with patch("app.services.cache_service.settings") as mock_settings:
+        mock_settings.vector_store_provider = "supabase"
         mock_settings.supabase_url = None
         mock_settings.supabase_service_key = None
         mock_settings.supabase_table_name = "documents"
@@ -18,6 +19,7 @@ def _service_with_supabase():
     mock_client = Mock()
     with patch("app.services.cache_service.create_embeddings"):
         with patch("app.services.cache_service.settings") as mock_settings:
+            mock_settings.vector_store_provider = "supabase"
             mock_settings.supabase_url = "https://supabase.example.com"
             mock_settings.supabase_service_key = "key"
             mock_settings.supabase_table_name = "documents"
@@ -30,6 +32,11 @@ def _service_with_supabase():
 class TestCheckCache:
     def test_no_client_returns_none(self):
         svc = _service_no_supabase()
+        assert svc.check_cache([0.1, 0.2]) is None
+
+    def test_execute_error_returns_none(self):
+        svc, client = _service_with_supabase()
+        client.rpc.return_value.execute.side_effect = RuntimeError("connect failed")
         assert svc.check_cache([0.1, 0.2]) is None
 
     def test_no_data_returns_none(self):
@@ -81,3 +88,19 @@ class TestDeleteExpiredCache:
         client.table.return_value.delete.return_value.eq.return_value.execute.return_value = Mock()
         svc._delete_expired_cache("abc-123")
         client.table.assert_called_with("semantic_cache")
+
+
+class TestCreateSupabaseClientIfConfigured:
+    def test_faiss_provider_disables_supabase_cache(self):
+        with patch("app.services.cache_service.settings") as mock_settings:
+            mock_settings.vector_store_provider = "faiss"
+            mock_settings.supabase_url = "https://supabase.example.com"
+            mock_settings.supabase_service_key = "key"
+            assert CacheService._create_supabase_client_if_configured() is None
+
+    def test_invalid_url_disables_supabase_cache(self):
+        with patch("app.services.cache_service.settings") as mock_settings:
+            mock_settings.vector_store_provider = "supabase"
+            mock_settings.supabase_url = "not-a-url"
+            mock_settings.supabase_service_key = "key"
+            assert CacheService._create_supabase_client_if_configured() is None

@@ -1,6 +1,7 @@
 from app.embeddings.supabase_client import get_supabase_client
 from app.embeddings.factory import create_embeddings
 from app.config import settings
+from urllib.parse import urlparse
 
 class CacheService:
     def __init__(self):
@@ -11,14 +12,18 @@ class CacheService:
         if self.supabase_client is None:
             # no caching locally, since it's for testing
             return None
-        response = self.supabase_client.rpc(
-                "match_cache_queries",
-                {
-                    "p_query_embedding": query_embedding,
-                    "match_threshold": threshold,
-                    "match_count": 1
-                }
-            ).execute()
+        try:
+            response = self.supabase_client.rpc(
+                    "match_cache_queries",
+                    {
+                        "p_query_embedding": query_embedding,
+                        "match_threshold": threshold,
+                        "match_count": 1
+                    }
+                ).execute()
+        except Exception as e:
+            print(f"Error checking cache: {e}")
+            return None
         if not response.data:
             return None
         best_match = response.data[0]
@@ -127,6 +132,11 @@ class CacheService:
 
     @staticmethod
     def _create_supabase_client_if_configured():
+        if settings.vector_store_provider.lower() != "supabase":
+            return None
         if not settings.supabase_url or not settings.supabase_service_key:
+            return None
+        parsed = urlparse(settings.supabase_url)
+        if not parsed.scheme or not parsed.netloc:
             return None
         return get_supabase_client()
