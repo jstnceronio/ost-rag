@@ -19,6 +19,8 @@ class ChatService:
             raise ValueError("Frage darf nicht leer sein")
 
         has_history = bool(history)
+        cache_hit = None
+        query_vector = None
 
         if not has_history:
             query_vector = self._embeddings.embed_query(cleaned_question)
