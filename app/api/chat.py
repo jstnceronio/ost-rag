@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -9,7 +8,6 @@ from slowapi import _rate_limit_exceeded_handler
 from app.api.deps import limiter, verify_api_key
 from app.api.models import ChatRequest, ChatResponse, ChatSource
 from app.services.chat_service import ChatService
-from app.services.sync_service import start_daily_sync
 
 from app.api import sync as sync_module
 from app.config import settings
@@ -18,11 +16,7 @@ from app.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.chat_service = ChatService()
-    task = asyncio.create_task(
-        start_daily_sync(settings.confluence_space_id, hour=settings.sync_hour)
-    )
     yield
-    task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)

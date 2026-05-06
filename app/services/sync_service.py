@@ -1,6 +1,4 @@
-import asyncio
 import logging
-from datetime import datetime, timedelta
 
 from app.confluence.client import ConfluenceClient
 from app.embeddings.indexing import IndexingService
@@ -37,20 +35,3 @@ def run_sync(space_id: str | None = None, page_id: str | None = None, limit: int
     IndexingService().index_chunks(chunks)
     return len(documents), len(chunks)
 
-
-async def start_daily_sync(space_id: str, hour: int = 6) -> None:
-    while True:
-        now = datetime.now()
-        next_run = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-        if next_run <= now:
-            next_run += timedelta(days=1)
-
-        wait_seconds = (next_run - now).total_seconds()
-        logger.info("Next sync at %s (in %.0fs)", next_run.isoformat(), wait_seconds)
-        await asyncio.sleep(wait_seconds)
-
-        try:
-            pages, chunks = await asyncio.to_thread(run_sync, space_id)
-            logger.info("Daily sync complete: %d pages, %d chunks", pages, chunks)
-        except Exception:
-            logger.exception("Daily sync failed")
