@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import pytest
-from app.confluence.mapper import _parse_datetime, map_page
+from app.confluence.mapper import _parse_datetime, map_attachment, map_page
 
 
 def _base_payload(**kwargs):
@@ -82,3 +82,59 @@ class TestMapPage:
     def test_updated_at_parsed(self):
         page = map_page(_base_payload(), base_url="https://wiki.example.com")
         assert page.updated_at is not None
+
+
+class TestMapAttachment:
+    def test_maps_v1_attachment_metadata(self):
+        payload = {
+            "id": "att1",
+            "title": "notes.txt",
+            "metadata": {"mediaType": "text/plain"},
+            "extensions": {"fileSize": 25},
+            "version": {"number": 2, "when": "2024-06-01T10:00:00Z"},
+            "_links": {
+                "webui": "/download/attachments/42/notes.txt",
+                "download": "/download/attachments/42/notes.txt?api=v2",
+            },
+        }
+
+        attachment = map_attachment(
+            payload,
+            base_url="https://wiki.example.com",
+            page_id="42",
+            page_title="My Page",
+            content=b"hello",
+        )
+
+        assert attachment.media_type == "text/plain"
+        assert attachment.file_size == 25
+        assert attachment.download_url == "https://wiki.example.com/download/attachments/42/notes.txt?api=v2"
+
+    def test_maps_v2_attachment_shape(self):
+        payload = {
+            "id": "att1",
+            "title": "manual.pdf",
+            "pageId": "42",
+            "mediaType": "application/pdf",
+            "fileSize": 250,
+            "webuiLink": "/wiki/download/attachments/42/manual.pdf",
+            "downloadLink": "/wiki/download/attachments/42/manual.pdf?api=v2",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "version": {"number": 3, "createdAt": "2024-06-01T10:00:00Z"},
+            "_links": {},
+        }
+
+        attachment = map_attachment(
+            payload,
+            base_url="https://example.atlassian.net/wiki",
+            page_id="fallback",
+            page_title="My Page",
+            content=b"%PDF",
+        )
+
+        assert attachment.page_id == "42"
+        assert attachment.media_type == "application/pdf"
+        assert attachment.file_size == 250
+        assert attachment.download_url == "https://example.atlassian.net/wiki/download/attachments/42/manual.pdf?api=v2"
+        assert attachment.created_at is not None
+        assert attachment.updated_at is not None

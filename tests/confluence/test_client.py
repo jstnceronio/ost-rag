@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 import pytest
 from app.confluence.client import ConfluenceClient
 from app.confluence.errors import ConfluenceAPIError
+from app.confluence.mapper import map_page
 
 
 def _make_client():
@@ -17,6 +18,13 @@ def _ok_response(data: dict) -> Mock:
     resp = Mock()
     resp.ok = True
     resp.json.return_value = data
+    return resp
+
+
+def _ok_bytes(data: bytes) -> Mock:
+    resp = Mock()
+    resp.ok = True
+    resp.content = data
     return resp
 
 
@@ -39,6 +47,20 @@ def _page_payload(page_id="1", title="Page"):
         "history": {"createdDate": "2024-01-01T00:00:00Z"},
         "_links": {"webui": "/pages/viewpage.action?pageId=" + page_id},
         "ancestors": [],
+    }
+
+
+def _attachment_payload(attachment_id="a1", title="notes.txt"):
+    return {
+        "id": attachment_id,
+        "title": title,
+        "metadata": {"mediaType": "text/plain"},
+        "extensions": {"fileSize": 11},
+        "version": {"number": 1, "when": "2024-06-01T00:00:00Z"},
+        "_links": {
+            "webui": "/download/attachments/1/notes.txt",
+            "download": "/download/attachments/1/notes.txt?api=v2",
+        },
     }
 
 
@@ -126,3 +148,39 @@ class TestGetPagesBySpaceId:
         client.session.get.return_value = _ok_response({"results": batch})
         pages = client.get_pages_by_space_id("SPACE1", page_size=5, limit=10)
         assert client.session.get.call_count == 2
+
+
+class TestGetPageAttachments:
+    def test_lists_and_downloads_attachments(self):
+        client = _make_client()
+        page = map_page(_page_payload("1"), base_url="https://wiki.example.com")
+        client.session.get.side_effect = [
+            _ok_response({"results": [_attachment_payload()]}),
+            _ok_bytes(b"Hello world"),
+        ]
+
+        attachments = client.get_page_attachments(page)
+
+        assert len(attachments) == 1
+        list_call = client.session.get.call_args_list[0]
+        download_call = client.session.get.call_args_list[1]
+        assert list_call.kwargs["params"]["expand"] == "version,metadata"
+        assert download_call.kwargs["headers"] == {"Accept": "*/*"}
+        assert attachments[0].id == "a1"
+        assert attachments[0].title == "notes.txt"
+        assert attachments[0].content == b"Hello world"
+        assert attachments[0].page_id == "1"
+
+    def test_paginates_attachments(self):
+        client = _make_client()
+        page = map_page(_page_payload("1"), base_url="https://wiki.example.com")
+        client.session.get.side_effect = [
+            _ok_response({"results": [_attachment_payload("a1")]}),
+            _ok_bytes(b"one"),
+            _ok_response({"results": []}),
+        ]
+
+        attachments = client.get_page_attachments(page, page_size=1)
+
+        assert len(attachments) == 1
+        assert client.session.get.call_count == 3

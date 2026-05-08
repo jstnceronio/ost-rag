@@ -1,7 +1,7 @@
 from app.confluence.auth import build_session
 from app.confluence.errors import ConfluenceAPIError
-from app.confluence.mapper import map_page
-from app.confluence.models import ConfluencePage
+from app.confluence.mapper import map_attachment, map_page
+from app.confluence.models import ConfluenceAttachment, ConfluencePage
 from typing import Any
 
 
@@ -20,6 +20,17 @@ class ConfluenceClient:
                 url=url,
             )
         return resp.json()
+
+    def _get_bytes(self, path: str) -> bytes:
+        url = path if path.startswith("http") else f"{self.base_url}{path}"
+        resp = self.session.get(url, headers={"Accept": "*/*"}, timeout=60)
+        if not resp.ok:
+            raise ConfluenceAPIError(
+                status_code=resp.status_code,
+                message=resp.text,
+                url=url,
+            )
+        return resp.content
 
     def get_page(self, page_id: str, body_format: str = "storage") -> ConfluencePage:
         expand_value = f"body.{body_format},version,history,space"
@@ -114,3 +125,47 @@ class ConfluenceClient:
             start += batch_size
 
         return pages
+
+    def get_page_attachments(self, page: ConfluencePage, page_size: int = 100) -> list[ConfluenceAttachment]:
+        start = 0
+        attachments: list[ConfluenceAttachment] = []
+
+        while True:
+            payload = self._get(
+                f"/rest/api/content/{page.id}/child/attachment",
+                params={
+                    "limit": page_size,
+                    "start": start,
+                    "expand": "version,metadata",
+                },
+            )
+            results = payload.get("results", [])
+
+            for result in results:
+                download_url = result.get("_links", {}).get("download")
+                if not download_url:
+                    continue
+
+                content = self._get_bytes(download_url)
+                attachments.append(
+                    map_attachment(
+                        result,
+                        base_url=self.base_url,
+                        page_id=page.id,
+                        page_title=page.title,
+                        content=content,
+                    )
+                )
+
+            if len(results) < page_size:
+                break
+
+            start += page_size
+
+        return attachments
+
+    def get_attachments_for_pages(self, pages: list[ConfluencePage], page_size: int = 100) -> list[ConfluenceAttachment]:
+        attachments: list[ConfluenceAttachment] = []
+        for page in pages:
+            attachments.extend(self.get_page_attachments(page, page_size=page_size))
+        return attachments

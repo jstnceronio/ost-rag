@@ -3,6 +3,7 @@ import logging
 from app.confluence.client import ConfluenceClient
 from app.embeddings.indexing import IndexingService
 from app.processing.models import ParsedDocument
+from app.processing.attachments import parse_confluence_attachment
 from app.processing.normalize import parse_confluence_page
 from app.processing.chunker import chunk_documents
 from app.config import settings
@@ -28,10 +29,16 @@ def run_sync(space_id: str | None = None, page_id: str | None = None, limit: int
         return 0, 0
 
     documents: list[ParsedDocument] = [parse_confluence_page(page) for page in pages]
+    attachments = client.get_attachments_for_pages(pages)
+    documents.extend(
+        doc
+        for attachment in attachments
+        if (doc := parse_confluence_attachment(attachment)) is not None
+    )
+
     chunks = chunk_documents(documents)
     if not chunks:
-        return len(documents), 0
+        return len(pages), 0
 
     IndexingService().index_chunks(chunks)
-    return len(documents), len(chunks)
-
+    return len(pages), len(chunks)

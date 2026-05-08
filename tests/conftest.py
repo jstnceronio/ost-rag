@@ -1,8 +1,7 @@
 from datetime import datetime
 import pytest
-from app.confluence.models import ConfluencePage
+from app.confluence.models import ConfluenceAttachment, ConfluencePage
 from app.processing.models import ParsedDocument, Chunk
-from unittest.mock import Mock
 from langchain_core.documents import Document
 
 
@@ -27,6 +26,24 @@ def make_confluence_page(**kwargs) -> ConfluencePage:
         updated_at=datetime(2024, 6, 1),
     )
     return ConfluencePage(**{**defaults, **kwargs})
+
+
+def make_confluence_attachment(**kwargs) -> ConfluenceAttachment:
+    defaults = dict(
+        id="att1",
+        title="notes.txt",
+        page_id="123",
+        page_title="Test Page",
+        media_type="text/plain",
+        file_size=11,
+        url="https://wiki.example.com/download/attachments/123/notes.txt",
+        download_url="https://wiki.example.com/download/attachments/123/notes.txt?api=v2",
+        version=1,
+        created_at=datetime(2024, 1, 1),
+        updated_at=datetime(2024, 6, 1),
+        content=b"Hello world",
+    )
+    return ConfluenceAttachment(**{**defaults, **kwargs})
 
 
 def make_parsed_document(**kwargs) -> ParsedDocument:

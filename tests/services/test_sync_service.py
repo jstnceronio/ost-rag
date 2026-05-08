@@ -21,6 +21,7 @@ class TestRunSync:
              patch("app.services.sync_service.IndexingService") as mock_idx_cls:
 
             mock_client_cls.return_value.get_pages_by_space_id.return_value = pages
+            mock_client_cls.return_value.get_attachments_for_pages.return_value = []
             mock_idx_cls.return_value.index_chunks.return_value = None
 
             page_count, chunk_count = run_sync("SPACE1")
@@ -34,6 +35,7 @@ class TestRunSync:
              patch("app.services.sync_service.IndexingService") as mock_idx_cls:
 
             mock_client_cls.return_value.get_pages_by_space_id.return_value = pages
+            mock_client_cls.return_value.get_attachments_for_pages.return_value = []
             mock_idx_cls.return_value.index_chunks.return_value = None
 
             run_sync("SPACE1", limit=1)
@@ -48,6 +50,7 @@ class TestRunSync:
              patch("app.services.sync_service.IndexingService") as mock_idx_cls:
 
             mock_client_cls.return_value.get_page_tree.return_value = pages
+            mock_client_cls.return_value.get_attachments_for_pages.return_value = []
             mock_idx_cls.return_value.index_chunks.return_value = None
 
             page_count, chunk_count = run_sync(page_id="1")
@@ -64,6 +67,7 @@ class TestRunSync:
              patch("app.services.sync_service.IndexingService") as mock_idx_cls:
 
             mock_client_cls.return_value.get_pages_by_space_id.return_value = []
+            mock_client_cls.return_value.get_attachments_for_pages.return_value = []
             mock_idx_cls.return_value.index_chunks.return_value = None
 
             page_count, chunk_count = run_sync("SPACE1")
@@ -78,8 +82,36 @@ class TestRunSync:
              patch("app.services.sync_service.IndexingService") as mock_idx_cls:
 
             mock_client_cls.return_value.get_pages_by_space_id.return_value = pages
+            mock_client_cls.return_value.get_attachments_for_pages.return_value = []
             mock_idx_cls.return_value.index_chunks.return_value = None
 
             run_sync("SPACE1")
 
         mock_idx_cls.return_value.index_chunks.assert_called_once()
+
+    def test_indexes_supported_attachments(self):
+        from tests.conftest import make_confluence_attachment
+
+        pages = [_make_page("1")]
+        attachments = [
+            make_confluence_attachment(
+                id="att1",
+                page_id="1",
+                page_title="Page",
+                title="notes.txt",
+                content=b"Attachment content",
+            )
+        ]
+        with patch("app.services.sync_service.ConfluenceClient") as mock_client_cls, \
+             patch("app.services.sync_service.IndexingService") as mock_idx_cls:
+
+            mock_client_cls.return_value.get_pages_by_space_id.return_value = pages
+            mock_client_cls.return_value.get_attachments_for_pages.return_value = attachments
+            mock_idx_cls.return_value.index_chunks.return_value = None
+
+            page_count, chunk_count = run_sync("SPACE1")
+
+        assert page_count == 1
+        assert chunk_count >= 2
+        indexed_chunks = mock_idx_cls.return_value.index_chunks.call_args.args[0]
+        assert any("Attachment content" in chunk.text for chunk in indexed_chunks)

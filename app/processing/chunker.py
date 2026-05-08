@@ -23,7 +23,7 @@ def chunk_documents(parsed_docs: list[ParsedDocument]) -> list[Chunk]:
 
         if doc.sections:
             for heading_path, section_text in doc.sections:
-                prefix_parts = [f"Page: {doc.title}"]
+                prefix_parts = _prefix_parts(doc)
                 if heading_path:
                     prefix_parts.append(f"Section: {' > '.join(heading_path)}")
                 prefix = "\n".join(prefix_parts) + "\n\n"
@@ -42,11 +42,12 @@ def chunk_documents(parsed_docs: list[ParsedDocument]) -> list[Chunk]:
                     chunk_index += 1
         else:
             for piece in chunk_text(doc.text):
+                prefix = "\n".join(_prefix_parts(doc)) + "\n\n"
                 chunks.append(
                     Chunk(
                         chunk_id=f"{doc.doc_id}:chunk:{chunk_index}",
                         doc_id=doc.doc_id,
-                        text=f"Page: {doc.title}\n\n{piece}",
+                        text=prefix + piece,
                         title=doc.title,
                         heading_path=[],
                         metadata=doc.metadata,
@@ -55,3 +56,18 @@ def chunk_documents(parsed_docs: list[ParsedDocument]) -> list[Chunk]:
                 chunk_index += 1
 
     return chunks
+
+
+def _prefix_parts(doc: ParsedDocument) -> list[str]:
+    if doc.metadata.get("source_type") == "attachment":
+        prefix_parts = ["Source type: Confluence attachment"]
+        parent_title = doc.metadata.get("parent_title")
+        if parent_title:
+            prefix_parts.append(f"Parent page: {parent_title}")
+        prefix_parts.append(f"Attachment: {doc.title}")
+        media_type = doc.metadata.get("media_type")
+        if media_type:
+            prefix_parts.append(f"Media type: {media_type}")
+        return prefix_parts
+
+    return [f"Page: {doc.title}"]

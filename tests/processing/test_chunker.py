@@ -91,3 +91,24 @@ class TestChunkDocuments:
         doc = _doc(sections=[(["Top", "Sub"], "nested content")])
         chunks = chunk_documents([doc])
         assert "Top > Sub" in chunks[0].text
+
+    def test_attachment_chunks_include_parent_page_identity(self):
+        doc = ParsedDocument(
+            doc_id="670171635:attachment:att1",
+            title="KI-und-Leistungsnachweise.pdf",
+            url="https://example.com/pdf",
+            text="",
+            sections=[(["Attachment"], "specific PDF content " * 200)],
+            metadata={
+                "source_type": "attachment",
+                "parent_title": "KI und Leistungsnachweise",
+                "media_type": "application/pdf",
+            },
+        )
+
+        chunks = chunk_documents([doc])
+
+        assert len(chunks) > 1
+        assert all("Source type: Confluence attachment" in chunk.text for chunk in chunks)
+        assert all("Parent page: KI und Leistungsnachweise" in chunk.text for chunk in chunks)
+        assert all("Attachment: KI-und-Leistungsnachweise.pdf" in chunk.text for chunk in chunks)
