@@ -1,11 +1,12 @@
 # RAGAS-Evaluation
 
-Dieses Projekt enthält einen kleinen lokalen Runner, mit dem der aktuelle Retrieval- und Antwort-Flow mit RAGAS bewertet werden kann.
+Dieses Projekt enthält einen kleinen lokalen Runner, mit dem der lokale Retrieval- und Antwort-Flow mit RAGAS bewertet werden kann.
 
 Dabei handelt es sich nicht um einen `pytest`-Test, sondern um ein Skript, das:
 
 - ein JSONL-Dataset mit Fragen einliest
 - jede Frage durch die echte lokale Retrieval- und Antwort-Pipeline laufen lässt
+- die gefundenen Kontexte in derselben Source-Struktur wie der Chat-Flow ausgibt
 - die Ergebnisse mit RAGAS bewertet
 - die Resultate als JSON-Dateien speichert
 
@@ -31,8 +32,18 @@ Vor dem Start der Evaluation sollte Folgendes vorhanden sein:
 - die App-Konfiguration ist verfügbar
 - `OPENAI_API_KEY` ist gesetzt
 - der vom System verwendete Retriever beziehungsweise Index ist lokal vorhanden
+- wenn die Produktionsantworten mit LLM-Reranking verglichen werden sollen, muss der Evaluations-Runner ebenfalls um `RerankerService` erweitert werden
 
 Wenn der normale Chat-Flow lokal keine Antworten liefern kann, schlägt auch der Evaluations-Runner aus demselben Grund fehl.
+
+## Reranking-Hinweis
+
+Der `/chat`-Flow kann vor der Antwortgenerierung `RerankerService` verwenden, gesteuert über:
+
+- `RERANKER_ENABLED`
+- `RERANKER_TOP_N`
+
+Der aktuelle Evaluations-Runner ruft den Retriever direkt auf und baut daraus den Antwortkontext. Damit misst er die Qualität der Vektorsuche und Antwortgenerierung ohne den optionalen Chat-Reranker. Wenn Produktionsmetriken inklusive Reranking benötigt werden, sollte der Runner nach `matches = retriever.invoke(...)` denselben Reranking-Schritt wie `ChatService` ausführen.
 
 ## Dataset-Format
 
@@ -123,7 +134,7 @@ Der vollständige Lauf enthält unter anderem:
 - Modellinformationen
 - Git-Revision
 - Antworten pro Frage
-- gefundene Kontexte und Source-IDs
+- gefundene beziehungsweise nach Pipeline-Schritt behaltene Kontexte und Source-IDs
 - Latenz
 - Metrikwerte pro Fall
 - Zusammenfassung

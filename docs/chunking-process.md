@@ -13,6 +13,7 @@ The main implementation files are:
 - `app/processing/mapper.py`: converts chunks into LangChain `Document` objects.
 - `app/embeddings/indexing.py` and `app/embeddings/vector_store.py`: embed and store chunks.
 - `app/embeddings/retriever.py`: retrieves relevant chunks at question time.
+- `app/reranking/reranker.py`: optionally reranks retrieved chunks before answer generation.
 
 ## End-To-End Flow
 
@@ -47,6 +48,7 @@ The pipeline is:
 7. Convert chunks to LangChain `Document` objects.
 8. Embed and upsert them into the configured vector store.
 9. Retrieve the most similar chunks when answering a question.
+10. Optionally rerank retrieved chunks with the LLM and keep only the top supported chunks for the answer context.
 
 The chunker itself does not call Confluence, parse HTML, download files, create embeddings, or query the vector store. It receives normalized `ParsedDocument` objects and returns `Chunk` objects.
 
@@ -481,7 +483,7 @@ For FAISS:
 - New indexes are created if no index exists.
 - The index is saved under `settings.faiss_index_path`.
 
-## Retrieval
+## Retrieval And Reranking
 
 At query time, `RetrieverService` creates a retriever:
 
@@ -492,7 +494,26 @@ return vectorstore.as_retriever(
 )
 ```
 
-The top 20 similar chunks are passed to `_build_context`, which renders each match as:
+The retriever returns the top 20 similar chunks. When `settings.reranker_enabled` is true, `ChatService` then passes those candidates to `RerankerService`.
+
+The reranker asks the LLM to score every candidate for the user question and return strict JSON:
+
+```json
+{
+  "results": [
+    {
+      "index": 0,
+      "relevance": 0.91,
+      "supports_answer": true,
+      "reason": "enthält die gesuchten Module"
+    }
+  ]
+}
+```
+
+Only results with `supports_answer=true` and valid indices are kept. Duplicate indices and out-of-range indices are ignored. The reranker stops at `settings.reranker_top_n`, which defaults to 5. If the LLM returns invalid JSON, the service falls back to the first `top_n` vector matches.
+
+The final matched chunks are passed to `_build_context`, which renders each match as:
 
 ```text
 Source 1
@@ -505,7 +526,7 @@ Content: ...
 
 The LLM is instructed to answer only from that context.
 
-Source cards are built from retrieved document metadata. If an attachment chunk is retrieved, the source card should show a chunk ID like:
+Source cards are built from the final matched document metadata after reranking. If an attachment chunk is retrieved and kept by the reranker, the source card should show a chunk ID like:
 
 ```text
 670171635:attachment:670171636:chunk:3
@@ -517,7 +538,7 @@ If a source card only shows page chunks such as:
 670171635:chunk:1
 ```
 
-then retrieval did not use the attachment content for that answer.
+then the final retrieval/reranking path did not use the attachment content for that answer.
 
 ## Complete Example
 
@@ -701,7 +722,8 @@ When debugging retrieval quality:
 4. Confirm chunks were created with attachment IDs.
 5. Confirm the vector store contains those chunk IDs.
 6. Confirm retrieval returns attachment chunks for relevant questions.
+7. If the chat answer still omits them, check whether reranking is filtering them out.
 
 ## Summary
 
-The chunking process turns normalized page bodies and supported attachment text into retrievable semantic units. Pages are chunked with page and heading context. Attachments are chunked with source type, parent page title, filename, media type, and attachment section context. The resulting chunks are embedded and stored with metadata so answers can cite either a Confluence page chunk or an attachment chunk.
+The chunking process turns normalized page bodies and supported attachment text into retrievable semantic units. Pages are chunked with page and heading context. Attachments are chunked with source type, parent page title, filename, media type, and attachment section context. The resulting chunks are embedded and stored with metadata. At answer time, vector search retrieves broad candidates, optional reranking narrows them to supported chunks, and answers can cite either a Confluence page chunk or an attachment chunk.

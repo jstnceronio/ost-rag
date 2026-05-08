@@ -1,6 +1,6 @@
 # Confluence RAG Bot
 
-A production-ready Retrieval-Augmented Generation (RAG) backend that turns your Confluence wiki into an intelligent Q&A API. It fetches and indexes Confluence pages, stores embeddings in Supabase (or locally with FAISS), and answers natural-language questions using OpenAI. It is complete with conversation history, semantic caching, and API-key authentication.
+A production-ready Retrieval-Augmented Generation (RAG) backend that turns your Confluence wiki into an intelligent Q&A API. It fetches and indexes Confluence pages, stores embeddings in Supabase (or locally with FAISS), reranks retrieved chunks with an LLM, and answers natural-language questions using OpenAI. It is complete with conversation history, semantic caching, and API-key authentication.
 
 ---
 
@@ -42,6 +42,9 @@ Confluence API
          RetrieverService        ← similarity search at query time
                 │
                 ▼
+          RerankerService        ← optional LLM relevance filter, top N chunks
+                │
+                ▼
           LLMService             ← GPT-4.1 answers strictly from retrieved context
                 │
                 ▼
@@ -54,8 +57,9 @@ Confluence API
 
 | Feature | Details |
 |---|---|
-| **RAG Pipeline** | Confluence pages → HTML normalisation → semantic chunking → vector embeddings → LLM answer generation |
+| **RAG Pipeline** | Confluence pages → HTML normalisation → semantic chunking → vector embeddings → similarity search → optional LLM reranking → answer generation |
 | **Dual Vector Store** | Supabase (pgvector) for production, FAISS for local/offline use |
+| **LLM Reranking** | Retrieved candidates are scored for question relevance and answer support; only the top reranked chunks are passed into the answer prompt |
 | **Semantic Cache** | Identical or near-identical questions (≥ 0.98 cosine similarity) are served instantly from cache, with automatic cache invalidation when source pages are updated |
 | **Conversation History** | Stateful multi-turn chat; history is injected into the prompt with structural delimiters. Cache is bypassed when history is present |
 | **Prompt Injection Protection** | Context, questions, and history are each wrapped in explicit delimiters with system-level instructions that prevent the LLM from treating user content as directives |
@@ -114,6 +118,8 @@ cp .env.example .env
 | `SUPABASE_SERVICE_KEY` | Supabase service role key |
 | `SUPABASE_TABLE_NAME` | Table that stores document embeddings |
 | `FAISS_INDEX_PATH` | Local path for the FAISS index (default: `./data/faiss_index`) |
+| `RERANKER_ENABLED` | Enables the LLM reranker before answer generation (default: `true`) |
+| `RERANKER_TOP_N` | Maximum number of reranked chunks passed to the answer prompt (default: `5`) |
 | `ALLOWED_CORS_ORIGINS` | Comma-separated allowed origins (default: `*`) |
 
 ---
@@ -301,7 +307,7 @@ A debugging utility that runs a similarity search against the vector store and p
 uv run scripts/test_retrieval.py
 ```
 
-Edit `TEST_QUERY` at the top of the file to test different queries.
+Edit `TEST_QUERY` at the top of the file to test different queries. This script checks raw vector retrieval; it does not apply the LLM reranker.
 
 ---
 
@@ -327,6 +333,10 @@ confluence-rag-bot/
 │   │   ├── retriever.py     # RetrieverService — similarity search
 │   │   ├── supabase_client.py # Supabase client singleton
 │   │   └── vector_store.py  # Supabase / FAISS vector store factory
+│   ├── reranking/
+│   │   ├── helpers.py       # Reranker prompt and document formatting
+│   │   ├── models.py        # Pydantic schema for reranker JSON output
+│   │   └── reranker.py      # RerankerService — LLM relevance selection
 │   ├── processing/
 │   │   ├── chunker.py       # Splits ParsedDocuments into LangChain Documents
 │   │   ├── mapper.py        # Maps chunks to metadata
@@ -334,7 +344,7 @@ confluence-rag-bot/
 │   │   └── normalize.py     # Parses Confluence HTML → clean text + headings
 │   ├── services/
 │   │   ├── cache_service.py # Semantic cache — check, save, validate, evict
-│   │   ├── chat_service.py  # Orchestrates retrieval, cache, and LLM
+│   │   ├── chat_service.py  # Orchestrates cache, retrieval, reranking, and LLM
 │   │   ├── helpers.py       # Shared utilities (ChatResult, context builder)
 │   │   ├── llm_service.py   # LLMService — prompt construction and GPT call
 │   │   └── sync_service.py  # run_sync() + start_daily_sync() scheduler

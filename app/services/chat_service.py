@@ -1,4 +1,6 @@
+from app.config import settings
 from app.embeddings.retriever import RetrieverService
+from app.reranking.reranker import RerankerService
 from app.services.helpers import ChatResult, _build_context, _document_to_source
 from app.services.llm_service import LLMService
 from app.services.cache_service import CacheService
@@ -10,6 +12,7 @@ class ChatService:
         self._llm_service = LLMService()
         self._cache_service = CacheService()
         self._embeddings = create_embeddings()
+        self._reranker_service = RerankerService()
 
     def answer_question(
         self, question: str, history: list[dict] | None = None
@@ -44,6 +47,13 @@ class ChatService:
             )
 
         matches = self._retriever.invoke(cleaned_question)
+        if settings.reranker_enabled:
+            matches = self._reranker_service.rerank(
+                cleaned_question,
+                matches,
+                top_n=settings.reranker_top_n,
+            )
+
         context = _build_context(matches)
         answer = self._llm_service.generate_answer(
             question=cleaned_question,

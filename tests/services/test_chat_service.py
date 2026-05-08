@@ -27,12 +27,16 @@ def _make_chat_service(answer="The answer.", cache_hit=None, matches=None):
     with patch("app.services.chat_service.RetrieverService") as mock_ret_cls, \
          patch("app.services.chat_service.LLMService") as mock_llm_cls, \
          patch("app.services.chat_service.CacheService") as mock_cache_cls, \
-         patch("app.services.chat_service.create_embeddings") as mock_emb:
+         patch("app.services.chat_service.create_embeddings") as mock_emb, \
+         patch("app.services.chat_service.RerankerService") as mock_reranker_cls:
 
         mock_ret_cls.return_value.get_retriever.return_value = mock_retriever
         mock_llm_cls.return_value = mock_llm
         mock_cache_cls.return_value = mock_cache
         mock_emb.return_value = mock_embeddings
+        mock_reranker = Mock()
+        mock_reranker.rerank.return_value = matches
+        mock_reranker_cls.return_value = mock_reranker
 
         from app.services.chat_service import ChatService
         svc = ChatService()
@@ -40,6 +44,7 @@ def _make_chat_service(answer="The answer.", cache_hit=None, matches=None):
         svc._llm_service = mock_llm
         svc._cache_service = mock_cache
         svc._embeddings = mock_embeddings
+        svc._reranker_service = mock_reranker
 
     return svc
 

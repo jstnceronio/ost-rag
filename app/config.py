@@ -27,5 +27,8 @@ class Settings(BaseSettings):
     api_key: str
     allowed_cors_origins: str = "*"
 
+    # Reranking
+    reranker_enabled: bool = True
+    reranker_top_n: int = 5
 
 settings = Settings()
