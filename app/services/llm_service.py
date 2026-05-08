@@ -36,6 +36,8 @@ class LLMService:
         question: str,
         context: str,
         history: list[dict] | None = None,
+        callbacks: list | None = None,
+        metadata: dict | None = None,
     ) -> str:
         messages = [SystemMessage(content=_SYSTEM_PROMPT)]
 
@@ -57,5 +59,13 @@ class LLMService:
             )
         )
 
-        response = self.llm.invoke(messages)
+        config = None
+        if callbacks or metadata:
+            config = {}
+            if callbacks:
+                config["callbacks"] = callbacks
+            if metadata:
+                config["metadata"] = metadata
+
+        response = self.llm.invoke(messages, config=config)
         return response.content

@@ -31,4 +31,10 @@ class Settings(BaseSettings):
     reranker_enabled: bool = True
     reranker_top_n: int = 5
 
+    # Langfuse tracing
+    langfuse_enabled: bool = False
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_base_url: str | None = None
+
 settings = Settings()

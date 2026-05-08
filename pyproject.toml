@@ -11,6 +11,7 @@ dependencies = [
     "langchain>=1.2.15",
     "langchain-community>=0.4.1",
     "langchain-openai>=1.1.12",
+    "langfuse>=3.0.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
     "pypdf>=6.10.2",
