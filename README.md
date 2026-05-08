@@ -61,6 +61,7 @@ Confluence API
 | **Dual Vector Store** | Supabase (pgvector) for production, FAISS for local/offline use |
 | **LLM Reranking** | Retrieved candidates are scored for question relevance and answer support; only the top reranked chunks are passed into the answer prompt |
 | **Semantic Cache** | Identical or near-identical questions (≥ 0.98 cosine similarity) are served instantly from cache, with automatic cache invalidation when source pages are updated |
+| **Langfuse Tracing** | Optional request, retrieval, reranking, cache, and LangChain LLM traces when Langfuse credentials are configured |
 | **Conversation History** | Stateful multi-turn chat; history is injected into the prompt with structural delimiters. Cache is bypassed when history is present |
 | **Prompt Injection Protection** | Context, questions, and history are each wrapped in explicit delimiters with system-level instructions that prevent the LLM from treating user content as directives |
 | **`POST /sync` Endpoint** | Triggers an on-demand index of any Confluence space; upserts on `chunk_id` so it is safe to call repeatedly |
@@ -120,6 +121,10 @@ cp .env.example .env
 | `FAISS_INDEX_PATH` | Local path for the FAISS index (default: `./data/faiss_index`) |
 | `RERANKER_ENABLED` | Enables the LLM reranker before answer generation (default: `true`) |
 | `RERANKER_TOP_N` | Maximum number of reranked chunks passed to the answer prompt (default: `5`) |
+| `LANGFUSE_ENABLED` | Enables Langfuse tracing when public and secret keys are also set (default: `false`) |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse project public key |
+| `LANGFUSE_SECRET_KEY` | Langfuse project secret key |
+| `LANGFUSE_BASE_URL` | Langfuse host URL, for example `https://cloud.langfuse.com` |
 | `ALLOWED_CORS_ORIGINS` | Comma-separated allowed origins (default: `*`) |
 
 ---

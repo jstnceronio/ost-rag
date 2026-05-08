@@ -66,3 +66,15 @@ class TestGenerateAnswer:
         svc.generate_answer("Q?", "ctx", history=[])
         messages = svc.llm.invoke.call_args[0][0]
         assert len(messages) == 2
+
+    def test_callbacks_and_metadata_passed_as_langchain_config(self):
+        svc = _make_llm_service()
+        callback = Mock()
+        metadata = {"langfuse_tags": ["chat"]}
+
+        svc.generate_answer("Q?", "ctx", callbacks=[callback], metadata=metadata)
+
+        assert svc.llm.invoke.call_args.kwargs["config"] == {
+            "callbacks": [callback],
+            "metadata": metadata,
+        }

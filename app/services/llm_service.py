@@ -1,3 +1,5 @@
+from typing import Any
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
@@ -36,8 +38,8 @@ class LLMService:
         question: str,
         context: str,
         history: list[dict] | None = None,
-        callbacks: list | None = None,
-        metadata: dict | None = None,
+        callbacks: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         messages = [SystemMessage(content=_SYSTEM_PROMPT)]
 
@@ -67,5 +69,8 @@ class LLMService:
             if metadata:
                 config["metadata"] = metadata
 
-        response = self.llm.invoke(messages, config=config)
+        if config:
+            response = self.llm.invoke(messages, config=config)
+        else:
+            response = self.llm.invoke(messages)
         return response.content

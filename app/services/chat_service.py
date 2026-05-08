@@ -7,6 +7,7 @@ from app.services.cache_service import CacheService
 from app.embeddings.factory import create_embeddings
 from app.services.tracing_service import TracingService
 
+
 class ChatService:
     def __init__(self):
         self._retriever = RetrieverService().get_retriever()
@@ -62,7 +63,10 @@ class ChatService:
                     ],
                 )
 
-            with self._tracing.span("chat.retrieve", input={"question": cleaned_question}) as retrieval_span:
+            with self._tracing.span(
+                "chat.retrieve",
+                input={"question": cleaned_question},
+            ) as retrieval_span:
                 matches = self._retriever.invoke(cleaned_question)
                 self._tracing.update(retrieval_span, output={"matches": len(matches)})
 
@@ -79,7 +83,11 @@ class ChatService:
                     self._tracing.update(rerank_span, output={"matches": len(matches)})
 
             context = _build_context(matches)
-            callbacks = [callback] if (callback := self._tracing.langchain_callback()) else None
+            callbacks = (
+                [callback]
+                if (callback := self._tracing.langchain_callback())
+                else None
+            )
             answer = self._llm_service.generate_answer(
                 question=cleaned_question,
                 context=context,

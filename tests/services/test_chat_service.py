@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest.mock import Mock, patch
 import pytest
 from langchain_core.documents import Document
@@ -88,3 +89,17 @@ class TestAnswerQuestion:
         svc = _make_chat_service()
         svc.answer_question("Q?", history=[{"role": "user", "content": "Hi"}])
         svc._cache_service.save_to_cache.assert_not_called()
+
+    def test_passes_langfuse_callback_to_llm_when_tracing_enabled(self):
+        svc = _make_chat_service()
+        callback = Mock()
+        tracer = Mock()
+        tracer.span.return_value = nullcontext(None)
+        tracer.langchain_callback.return_value = callback
+        svc._tracing = tracer
+
+        svc.answer_question("What is VPN?")
+
+        call_kwargs = svc._llm_service.generate_answer.call_args.kwargs
+        assert call_kwargs["callbacks"] == [callback]
+        assert call_kwargs["metadata"]["langfuse_tags"] == ["chat"]
