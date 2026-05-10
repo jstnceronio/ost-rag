@@ -1,8 +1,11 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
+import logging
 from typing import Any
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class TracingService:
@@ -16,6 +19,19 @@ class TracingService:
         self._callback_handler_cls = None
 
         if not self._enabled:
+            if settings.langfuse_enabled:
+                missing = [
+                    name
+                    for name, value in {
+                        "LANGFUSE_PUBLIC_KEY": settings.langfuse_public_key,
+                        "LANGFUSE_SECRET_KEY": settings.langfuse_secret_key,
+                    }.items()
+                    if not value
+                ]
+                logger.warning(
+                    "Langfuse tracing is enabled but missing required settings: %s",
+                    ", ".join(missing),
+                )
             return
 
         from langfuse import Langfuse
@@ -30,6 +46,7 @@ class TracingService:
 
         self._client = Langfuse(**kwargs)
         self._callback_handler_cls = CallbackHandler
+        logger.info("Langfuse tracing initialized")
 
     @property
     def enabled(self) -> bool:
@@ -38,7 +55,21 @@ class TracingService:
     def langchain_callback(self) -> Any | None:
         if not self._callback_handler_cls:
             return None
-        return self._callback_handler_cls()
+        return self._callback_handler_cls(public_key=settings.langfuse_public_key)
+
+    def flush(self) -> None:
+        if self._client:
+            try:
+                self._client.flush()
+            except Exception:
+                logger.exception("Failed to flush Langfuse traces")
+
+    def shutdown(self) -> None:
+        if self._client:
+            try:
+                self._client.shutdown()
+            except Exception:
+                logger.exception("Failed to shutdown Langfuse client")
 
     @contextmanager
     def span(
