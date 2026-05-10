@@ -1,8 +1,11 @@
+import logging
 from app.confluence.auth import build_session
 from app.confluence.errors import ConfluenceAPIError
 from app.confluence.mapper import map_attachment, map_page
 from app.confluence.models import ConfluenceAttachment, ConfluencePage
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ConfluenceClient:
@@ -146,7 +149,18 @@ class ConfluenceClient:
                 if not download_url:
                     continue
 
-                content = self._get_bytes(download_url)
+                try:
+                    content = self._get_bytes(download_url)
+                except ConfluenceAPIError as error:
+                    logger.warning(
+                        "Skipping attachment %s on page %s after download failed with %s: %s",
+                        result.get("id"),
+                        page.id,
+                        error.status_code,
+                        error.url,
+                    )
+                    continue
+
                 attachments.append(
                     map_attachment(
                         result,

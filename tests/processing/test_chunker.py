@@ -63,6 +63,25 @@ class TestChunkDocuments:
         assert "Section: Intro" in chunks[0].text
         assert "Section: Setup" in chunks[1].text
 
+    def test_consecutive_sections_with_same_heading_are_grouped(self):
+        doc = _doc(
+            sections=[
+                (["In 6 Schritten in die OST"], "Schritt 1: Initiales Passwort setzen"),
+                (["In 6 Schritten in die OST"], "Schritt 2: Erstmals anmelden"),
+                (["In 6 Schritten in die OST"], "Schritt 3: Multi-Faktor-Authentifizierung einrichten"),
+                (["In 6 Schritten in die OST"], "Schritt 4: Passwort ändern"),
+                (["In 6 Schritten in die OST"], "Schritt 5: WLAN verbinden"),
+                (["In 6 Schritten in die OST"], "Schritt 6: Weitere OST-Services einrichten"),
+            ]
+        )
+
+        chunks = chunk_documents([doc])
+
+        assert len(chunks) == 1
+        assert "Section: In 6 Schritten in die OST" in chunks[0].text
+        assert "Schritt 1" in chunks[0].text
+        assert "Schritt 6" in chunks[0].text
+
     def test_chunk_ids_are_sequential(self):
         doc = _doc(sections=[(["A"], "text A"), (["B"], "text B")])
         chunks = chunk_documents([doc])

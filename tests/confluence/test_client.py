@@ -184,3 +184,17 @@ class TestGetPageAttachments:
 
         assert len(attachments) == 1
         assert client.session.get.call_count == 3
+
+    def test_skips_attachment_when_download_fails(self):
+        client = _make_client()
+        page = map_page(_page_payload("1"), base_url="https://wiki.example.com")
+        client.session.get.side_effect = [
+            _ok_response({"results": [_attachment_payload("a1"), _attachment_payload("a2")]}),
+            _error_response(404),
+            _ok_bytes(b"Hello world"),
+        ]
+
+        attachments = client.get_page_attachments(page)
+
+        assert len(attachments) == 1
+        assert attachments[0].id == "a2"

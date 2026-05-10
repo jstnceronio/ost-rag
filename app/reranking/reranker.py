@@ -17,7 +17,7 @@ class RerankerService:
             temperature=0,
         )
 
-    def rerank(self, query: str, docs: list[Document], top_n: int = 5) -> list[Document]:
+    def rerank(self, query: str, docs: list[Document], top_n: int = 8) -> list[Document]:
         if not docs:
             return []
 

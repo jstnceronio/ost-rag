@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import re
 from io import BytesIO
@@ -11,6 +12,9 @@ from app.confluence.models import ConfluenceAttachment
 from app.processing.models import ParsedDocument
 from app.processing.normalize import _normalize_multiline
 from pypdf import PdfReader
+from pypdf.errors import DependencyError, PyPdfError
+
+logger = logging.getLogger(__name__)
 
 _TEXT_MEDIA_TYPES = {
     "application/json",
@@ -44,7 +48,17 @@ _TEXT_EXTENSIONS = {
 
 
 def parse_confluence_attachment(attachment: ConfluenceAttachment) -> ParsedDocument | None:
-    text = _extract_attachment_text(attachment)
+    try:
+        text = _extract_attachment_text(attachment)
+    except (DependencyError, PyPdfError, UnicodeError, ValueError) as error:
+        logger.warning(
+            "Skipping attachment %s on page %s after text extraction failed: %s",
+            attachment.id,
+            attachment.page_id,
+            error,
+        )
+        return None
+
     if not text:
         return None
 

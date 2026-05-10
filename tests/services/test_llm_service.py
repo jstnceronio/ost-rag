@@ -61,6 +61,13 @@ class TestGenerateAnswer:
         assert "--- BEGIN CONTEXT ---" in final_msg.content
         assert "my context block" in final_msg.content
 
+    def test_system_prompt_forbids_numbered_list_placeholders(self):
+        svc = _make_llm_service()
+        svc.generate_answer("Q?", "ctx")
+        system_msg = svc.llm.invoke.call_args[0][0][0]
+        assert "Do not fill missing numbers with placeholders" in system_msg.content
+        assert "do not claim a total count unless all items are present" in system_msg.content
+
     def test_empty_history_sends_two_messages(self):
         svc = _make_llm_service()
         svc.generate_answer("Q?", "ctx", history=[])

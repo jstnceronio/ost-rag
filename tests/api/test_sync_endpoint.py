@@ -4,6 +4,7 @@ from starlette.testclient import TestClient
 
 from app.api.chat import app
 from app.api.deps import verify_api_key
+from app.confluence.errors import ConfluenceAPIError
 
 
 @pytest.fixture
@@ -54,3 +55,26 @@ class TestSyncEndpoint:
     def test_negative_limit_returns_422(self, client):
         resp = client.post("/sync", json={"space_id": "SPACE1", "limit": -1})
         assert resp.status_code == 422
+
+
+class TestPageSpaceEndpoint:
+    def test_returns_space_id_for_page(self, client, make_confluence_page):
+        page = make_confluence_page(id="123", space_id="SPACE1")
+
+        with patch("app.api.sync.ConfluenceClient") as mock_client_cls:
+            mock_client_cls.return_value.get_page.return_value = page
+            resp = client.get("/pages/123/space")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"page_id": "123", "space_id": "SPACE1"}
+        mock_client_cls.return_value.get_page.assert_called_once_with("123")
+
+    def test_confluence_error_is_returned(self, client):
+        error = ConfluenceAPIError(404, "Not Found", "https://wiki.example.com/rest/api/content/123")
+
+        with patch("app.api.sync.ConfluenceClient") as mock_client_cls:
+            mock_client_cls.return_value.get_page.side_effect = error
+            resp = client.get("/pages/123/space")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Not Found"

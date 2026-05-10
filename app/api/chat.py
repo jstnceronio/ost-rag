@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -11,7 +13,10 @@ from app.api import sync as sync_module
 from app.config import settings
 
 
-_chat_service = ChatService()
+@lru_cache
+def get_chat_service() -> ChatService:
+    return ChatService()
+
 
 app = FastAPI()
 app.state.limiter = limiter
@@ -30,9 +35,14 @@ app.include_router(sync_module.router)
 
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("20/minute;300/day")
-def chat(request: Request, payload: ChatRequest, _: None = Depends(verify_api_key)) -> ChatResponse:
+def chat(
+    request: Request,
+    payload: ChatRequest,
+    _: None = Depends(verify_api_key),
+    chat_service: ChatService = Depends(get_chat_service),
+) -> ChatResponse:
     try:
-        result = _chat_service.answer_question(
+        result = chat_service.answer_question(
             payload.question,
             history=[h.model_dump() for h in payload.history],
         )

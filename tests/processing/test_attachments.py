@@ -1,3 +1,7 @@
+from unittest.mock import patch
+
+from pypdf.errors import DependencyError
+
 from app.processing.attachments import parse_confluence_attachment
 from tests.conftest import make_confluence_attachment
 
@@ -30,3 +34,16 @@ class TestParseConfluenceAttachment:
         )
 
         assert parse_confluence_attachment(attachment) is None
+
+    def test_pdf_extraction_dependency_error_is_skipped(self):
+        attachment = make_confluence_attachment(
+            title="secure.pdf",
+            media_type="application/pdf",
+            content=b"%PDF-1.7",
+        )
+
+        with patch(
+            "app.processing.attachments._pdf_to_text",
+            side_effect=DependencyError("cryptography is required"),
+        ):
+            assert parse_confluence_attachment(attachment) is None

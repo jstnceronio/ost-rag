@@ -35,3 +35,8 @@ class SyncRequest(BaseModel):
 class SyncResponse(BaseModel):
     pages_indexed: int
     chunks_indexed: int
+
+
+class PageSpaceResponse(BaseModel):
+    page_id: str
+    space_id: str | None

@@ -1,9 +1,8 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import pytest
 from starlette.testclient import TestClient
 
-import app.api.chat as chat_module
-from app.api.chat import app
+from app.api.chat import app, get_chat_service
 from app.api.deps import verify_api_key
 from app.services.helpers import ChatResult
 
@@ -25,8 +24,8 @@ def mock_service():
 @pytest.fixture
 def client(mock_service):
     app.dependency_overrides[verify_api_key] = lambda: None
-    with patch.object(chat_module, "_chat_service", mock_service):
-        yield TestClient(app)
+    app.dependency_overrides[get_chat_service] = lambda: mock_service
+    yield TestClient(app)
     app.dependency_overrides.clear()
 
 
