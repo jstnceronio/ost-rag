@@ -18,6 +18,7 @@ class ChatService:
         self._embeddings = create_embeddings()
         self._reranker_service = RerankerService()
         self._tracing = TracingService()
+        # smaller model just for rewriting queries, saves cost
         self._rewrite_llm = ChatOpenAI(
             model=settings.query_rewrite_model,
             api_key=settings.openai_api_key,
@@ -25,6 +26,7 @@ class ChatService:
         )
 
     def _contextualize_query(self, question: str, history: list[dict]) -> str:
+        # use the last 3 turns 
         history_lines = "\n".join(
             f"{t['role'].capitalize()}: {t['content']}" for t in history[-4:]
         )
@@ -62,6 +64,7 @@ class ChatService:
                 },
                 metadata={"cache_enabled": not has_history},
             ) as root_span:
+                # skip cache when history is present
                 if not has_history:
                     with self._tracing.span("chat.cache_lookup") as cache_span:
                         query_vector = self._embeddings.embed_query(cleaned_question)
@@ -89,6 +92,7 @@ class ChatService:
                         ],
                     )
 
+                # if history, rewrite the question before searching
                 retrieval_query = cleaned_question
                 if has_history:
                     with self._tracing.span("chat.contextualize_query") as ctx_span:
@@ -100,6 +104,7 @@ class ChatService:
                             output={"original": cleaned_question, "rewritten": retrieval_query},
                         )
 
+                # search confluence with the query
                 with self._tracing.span(
                     "chat.retrieve",
                     input={"question": retrieval_query},
@@ -107,6 +112,7 @@ class ChatService:
                     matches = self._retriever.invoke(retrieval_query)
                     self._tracing.update(retrieval_span, output={"matches": len(matches)})
 
+                # rerank 
                 if settings.reranker_enabled:
                     with self._tracing.span(
                         "chat.rerank",
@@ -119,6 +125,7 @@ class ChatService:
                         )
                         self._tracing.update(rerank_span, output={"matches": len(matches)})
 
+                # build the context string from retrieved docs
                 context = _build_context(matches)
                 callbacks = (
                     [callback]
@@ -126,7 +133,7 @@ class ChatService:
                     else None
                 )
                 answer = self._llm_service.generate_answer(
-                    question=cleaned_question,
+                    question=cleaned_question,  # use original question, not rewritten
                     context=context,
                     history=history,
                     callbacks=callbacks,
@@ -137,6 +144,7 @@ class ChatService:
                     },
                 )
 
+                # only cache if no historyn
                 if not has_history:
                     self._cache_service.save_to_cache(
                         query_text=cleaned_question,
@@ -151,6 +159,7 @@ class ChatService:
                     metadata={"sources": len(matches)},
                 )
 
+            # deduplicate sources by doc_id
             seen = set()
             return ChatResult(
                 answer=answer,

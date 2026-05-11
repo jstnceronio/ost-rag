@@ -48,8 +48,10 @@ class LLMService:
         callbacks: list[Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> str:
+        # start with system prompt
         messages = [SystemMessage(content=_SYSTEM_PROMPT)]
 
+        # inject previous conversation turns
         for turn in (history or []):
             role = turn.get("role")
             content = turn.get("content", "")
@@ -57,8 +59,10 @@ class LLMService:
             if role == "user":
                 messages.append(HumanMessage(content=wrapped))
             elif role == "assistant":
+                # assistant turns go in as HumanMessage too so they stay in context
                 messages.append(AIMessage(content=wrapped))
 
+        # add the actual question + retrieved confluence context
         messages.append(
             HumanMessage(
                 content=(
@@ -68,6 +72,7 @@ class LLMService:
             )
         )
 
+        # only pass config if we actually have something to put in it
         config = None
         if callbacks or metadata:
             config = {}
