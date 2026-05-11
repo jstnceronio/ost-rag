@@ -5,6 +5,8 @@ class Settings(BaseSettings):
 
     # OpenAI Settings
     openai_model: str = "gpt-4.1"
+    # Cheap model used only for query rewriting
+    query_rewrite_model: str = "gpt-4o-mini"
     openai_api_key: str
 
     # Confluence Settings
