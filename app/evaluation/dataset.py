@@ -42,8 +42,8 @@ def load_evaluation_cases(path: Path) -> list[EvaluationCase]:
 
 def _parse_case(payload: dict[str, Any], line_number: int) -> EvaluationCase:
     question = str(payload.get("question") or "").strip()
-    # Reference is optional
-    reference_answer = str(payload.get("reference_answer") or "").strip()
+    # Reference is optional.
+    reference_answer = str(payload.get("reference_answer") or payload.get("reference") or "").strip()
 
     if not question:
         raise ValueError(f"Line {line_number} contains an empty question")

@@ -16,12 +16,15 @@ Dabei handelt es sich nicht um einen `pytest`-Test, sondern um ein Skript, das:
 uv run python -m app.evaluation.runner
 ```
 
+Standardmässig verwendet der Runner `resources/datasets/generated_cases.jsonl`, da dieses Dataset
+Referenzantworten enthält und dadurch alle Metriken berechnet werden können.
+
 Nützliche Varianten:
 
 ```bash
-uv run python scripts/ragas_metrics.py --limit 3
-uv run python scripts/ragas_metrics.py --dataset resources/datasets/test_cases.jsonl
-uv run python scripts/ragas_metrics.py --judge-model gpt-4.1-nano
+uv run python -m app.evaluation.runner --limit 3
+uv run python -m app.evaluation.runner --dataset resources/datasets/test_cases.jsonl
+uv run python -m app.evaluation.runner --judge-model gpt-4.1-nano
 ```
 
 ## Voraussetzungen
@@ -127,6 +130,9 @@ Jeder Lauf schreibt Artefakte nach `resources/evaluation_runs/`:
 - `ragas_eval_<timestamp>.json`: vollständiger Lauf
 - `ragas_eval_<timestamp>_summary.json`: nur die Zusammenfassung der Metriken
 - `ragas_eval_latest.json`: letzter vollständiger Lauf
+
+Die Zusammenfassung enthält `reference_cases`. Wenn dieser Wert `0` ist, werden nur `faithfulness` und
+`answer_relevancy` berechnet, weil keine ausgewerteten Fälle eine Referenzantwort enthalten.
 
 Der vollständige Lauf enthält unter anderem:
 

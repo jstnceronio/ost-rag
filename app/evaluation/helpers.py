@@ -91,11 +91,13 @@ def _summarize_results(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         metric_name: _metric_summary(metric_name, case_results) for metric_name in metric_names
     }
     error_count = sum(1 for case in case_results if case.get("error"))
+    reference_count = sum(1 for case in case_results if case.get("reference_answer"))
 
     return {
         "total_cases": len(case_results),
         "successful_cases": len(case_results) - error_count,
         "failed_cases": error_count,
+        "reference_cases": reference_count,
         "metrics": metric_summary
     }
 

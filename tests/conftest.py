@@ -28,6 +28,11 @@ def make_confluence_page(**kwargs) -> ConfluencePage:
     return ConfluencePage(**{**defaults, **kwargs})
 
 
+@pytest.fixture(name="make_confluence_page")
+def make_confluence_page_fixture():
+    return make_confluence_page
+
+
 def make_confluence_attachment(**kwargs) -> ConfluenceAttachment:
     defaults = dict(
         id="att1",
