@@ -20,11 +20,17 @@ def sync(
     if not payload.page_id and not payload.space_id:
         raise HTTPException(status_code=400, detail="Page or Space ID required")
 
-    pages, chunks = run_sync(
-        space_id=payload.space_id,
-        page_id=payload.page_id,
-        limit=payload.limit,
-    )
+    try:
+        pages, chunks = run_sync(
+            space_id=payload.space_id,
+            page_id=payload.page_id,
+            limit=payload.limit,
+        )
+    except ConfluenceAPIError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Confluence sync failed with HTTP {error.status_code}: {error.message}",
+        ) from error
 
     if pages == 0:
         target = payload.page_id or payload.space_id

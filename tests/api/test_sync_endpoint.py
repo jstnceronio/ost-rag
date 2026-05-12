@@ -44,6 +44,19 @@ class TestSyncEndpoint:
             resp = client.post("/sync", json={"space_id": "EMPTY"})
         assert resp.status_code == 404
 
+    def test_confluence_error_returns_upstream_failure(self, client):
+        error = ConfluenceAPIError(
+            500,
+            "Internal Server Error",
+            "https://wiki.example.com/rest/api/content",
+        )
+
+        with patch("app.api.sync.run_sync", side_effect=error):
+            resp = client.post("/sync", json={"space_id": "SPACE1"})
+
+        assert resp.status_code == 502
+        assert "Confluence sync failed with HTTP 500" in resp.json()["detail"]
+
     def test_missing_api_key_returns_401(self):
         resp = TestClient(app).post("/sync", json={"space_id": "SPACE1"})
         assert resp.status_code == 401

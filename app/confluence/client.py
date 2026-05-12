@@ -1,11 +1,20 @@
 import logging
+import time
+from typing import Any
+
+from requests import Response
+from requests.exceptions import RequestException
+
 from app.confluence.auth import build_session
 from app.confluence.errors import ConfluenceAPIError
 from app.confluence.mapper import map_attachment, map_page
 from app.confluence.models import ConfluenceAttachment, ConfluencePage
-from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_SECONDS = 1.0
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class ConfluenceClient:
@@ -13,9 +22,49 @@ class ConfluenceClient:
         self.base_url = base_url.rstrip("/")
         self.session = build_session(api_token)
 
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _request_with_retries(self, path: str, **kwargs: Any) -> tuple[str, Response]:
         url = path if path.startswith("http") else f"{self.base_url}{path}"
-        resp = self.session.get(url, params=params, timeout=60)
+        last_error: RequestException | None = None
+
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                resp = self.session.get(url, timeout=60, **kwargs)
+            except RequestException as error:
+                last_error = error
+                if attempt == _MAX_RETRIES:
+                    raise ConfluenceAPIError(
+                        status_code=503,
+                        message=str(error),
+                        url=url,
+                    ) from error
+                self._sleep_before_retry(attempt, url, None)
+                continue
+
+            if (
+                resp.ok
+                or resp.status_code not in _RETRYABLE_STATUS_CODES
+                or attempt == _MAX_RETRIES
+            ):
+                return url, resp
+
+            self._sleep_before_retry(attempt, url, resp.status_code)
+
+        raise ConfluenceAPIError(
+            status_code=503,
+            message=str(last_error) if last_error else "Confluence request failed",
+            url=url,
+        )
+
+    def _sleep_before_retry(self, attempt: int, url: str, status_code: int | None) -> None:
+        delay = _RETRY_BACKOFF_SECONDS * (2**attempt)
+        if status_code is None:
+            logger.warning("Retrying Confluence request to %s after request failure", url)
+        else:
+            logger.warning("Retrying Confluence request to %s after HTTP %s", url, status_code)
+        time.sleep(delay)
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        url, resp = self._request_with_retries(path, params=params)
         if not resp.ok:
             raise ConfluenceAPIError(
                 status_code=resp.status_code,
@@ -25,8 +74,7 @@ class ConfluenceClient:
         return resp.json()
 
     def _get_bytes(self, path: str) -> bytes:
-        url = path if path.startswith("http") else f"{self.base_url}{path}"
-        resp = self.session.get(url, headers={"Accept": "*/*"}, timeout=60)
+        url, resp = self._request_with_retries(path, headers={"Accept": "*/*"})
         if not resp.ok:
             raise ConfluenceAPIError(
                 status_code=resp.status_code,
@@ -181,5 +229,13 @@ class ConfluenceClient:
     def get_attachments_for_pages(self, pages: list[ConfluencePage], page_size: int = 100) -> list[ConfluenceAttachment]:
         attachments: list[ConfluenceAttachment] = []
         for page in pages:
-            attachments.extend(self.get_page_attachments(page, page_size=page_size))
+            try:
+                attachments.extend(self.get_page_attachments(page, page_size=page_size))
+            except ConfluenceAPIError as error:
+                logger.warning(
+                    "Skipping attachments for page %s after listing failed with %s: %s",
+                    page.id,
+                    error.status_code,
+                    error.url,
+                )
         return attachments

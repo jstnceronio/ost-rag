@@ -79,6 +79,34 @@ class TestGetPage:
             client.get_page("99")
         assert exc.value.status_code == 404
 
+    def test_retries_transient_api_errors(self):
+        client = _make_client()
+        client.session.get.side_effect = [
+            _error_response(500),
+            _ok_response(_page_payload("42", "My Page")),
+        ]
+
+        with patch("app.confluence.client.time.sleep") as mock_sleep:
+            page = client.get_page("42")
+
+        assert page.id == "42"
+        assert client.session.get.call_count == 2
+        mock_sleep.assert_called_once()
+
+    def test_raises_after_transient_retries_are_exhausted(self):
+        client = _make_client()
+        client.session.get.return_value = _error_response(500)
+
+        with (
+            patch("app.confluence.client.time.sleep") as mock_sleep,
+            pytest.raises(ConfluenceAPIError) as exc,
+        ):
+            client.get_page("42")
+
+        assert exc.value.status_code == 500
+        assert client.session.get.call_count == 4
+        assert mock_sleep.call_count == 3
+
 
 class TestGetPageTree:
     def test_returns_root_and_child_pages(self):
@@ -198,3 +226,13 @@ class TestGetPageAttachments:
 
         assert len(attachments) == 1
         assert attachments[0].id == "a2"
+
+    def test_skips_page_when_attachment_listing_fails(self):
+        client = _make_client()
+        page = map_page(_page_payload("1"), base_url="https://wiki.example.com")
+        client.session.get.return_value = _error_response(500)
+
+        with patch("app.confluence.client.time.sleep"):
+            attachments = client.get_attachments_for_pages([page])
+
+        assert attachments == []
