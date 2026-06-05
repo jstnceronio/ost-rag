@@ -35,6 +35,27 @@ class TestBuildContext:
         result = _build_context([doc])
         assert "Untitled" in result
 
+    def test_parent_text_is_used_when_available(self):
+        doc = _doc(
+            "small child chunk",
+            title="Page",
+            doc_id="1",
+            chunk_id="1:0",
+            heading_path=["Setup"],
+            parent_text="larger parent section",
+            parent_section_id="1:section:0",
+            chunk_type="procedure",
+            url="https://example.com",
+        )
+
+        result = _build_context([doc])
+
+        assert "larger parent section" in result
+        assert "small child chunk" not in result
+        assert "Parent Section ID: 1:section:0" in result
+        assert "Chunk Type: procedure" in result
+        assert "URL: https://example.com" in result
+
 
 class TestDocumentToSource:
     def test_all_fields_returned(self):

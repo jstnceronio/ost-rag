@@ -21,18 +21,24 @@ def _build_context(matches: list[Document]) -> str:
         title = str(metadata.get("title") or "Untitled")
         doc_id = str(metadata.get("doc_id") or "")
         chunk_id = str(metadata.get("chunk_id") or "")
-        excerpt = match.page_content.strip()
+        url = str(metadata.get("url") or "")
+        chunk_type = str(metadata.get("chunk_type") or "")
+        parent_section_id = str(metadata.get("parent_section_id") or "")
+        excerpt = str(metadata.get("parent_text") or match.page_content).strip()
 
         context_parts.append(
             "\n".join(
-                [
+                [part for part in [
                     f"Source {index}",
                     f"Title: {title}",
                     f"Document ID: {doc_id}",
                     f"Chunk ID: {chunk_id}",
+                    f"Parent Section ID: {parent_section_id}" if parent_section_id else "",
                     f"Heading Path: {heading_text}",
+                    f"Chunk Type: {chunk_type}" if chunk_type else "",
+                    f"URL: {url}" if url else "",
                     f"Content: {excerpt}",
-                ]
+                ] if part]
             )
         )
 

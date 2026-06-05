@@ -106,3 +106,37 @@ class TestChunkDocuments:
         assert all("Source type: Confluence attachment" in chunk.text for chunk in chunks)
         assert all("Parent page: KI und Leistungsnachweise" in chunk.text for chunk in chunks)
         assert all("Attachment: KI-und-Leistungsnachweise.pdf" in chunk.text for chunk in chunks)
+
+    def test_neighboring_blocks_under_same_heading_are_merged(self):
+        doc = _doc(
+            sections=[
+                (["Setup"], "First paragraph."),
+                (["Setup"], "- Step one"),
+                (["Setup"], "- Step two"),
+            ]
+        )
+
+        chunks = chunk_documents([doc])
+
+        assert len(chunks) == 1
+        assert "First paragraph." in chunks[0].text
+        assert "- Step one" in chunks[0].text
+        assert "- Step two" in chunks[0].text
+
+    def test_chunk_metadata_includes_parent_section_context(self):
+        doc = _doc(sections=[(["Setup"], "Install the client.")])
+
+        chunks = chunk_documents([doc])
+
+        assert chunks[0].metadata["chunk_type"] == "section"
+        assert chunks[0].metadata["parent_section_id"] == "doc1:section:0"
+        assert chunks[0].metadata["parent_heading_path"] == ["Setup"]
+        assert "Page: My Page" in chunks[0].metadata["parent_text"]
+        assert "Install the client." in chunks[0].metadata["parent_text"]
+
+    def test_numbered_list_chunk_is_classified_as_procedure(self):
+        doc = _doc(sections=[(["Steps"], "1. Open settings\n2. Enable MFA")])
+
+        chunks = chunk_documents([doc])
+
+        assert chunks[0].metadata["chunk_type"] == "procedure"

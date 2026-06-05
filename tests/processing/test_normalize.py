@@ -81,6 +81,11 @@ class TestParseConfluencePage:
         assert "Item one" in doc.text
         assert "Item two" in doc.text
 
+    def test_ordered_list_numbering_preserved(self):
+        doc = parse_confluence_page(_page("<ol><li>Open settings</li><li>Enable MFA</li></ol>"))
+        assert "1. Open settings" in doc.text
+        assert "2. Enable MFA" in doc.text
+
     def test_table_rows_included(self):
         doc = parse_confluence_page(_page("<table><tr><td>Cell A</td><td>Cell B</td></tr></table>"))
         assert "Cell A" in doc.text

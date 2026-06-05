@@ -1,12 +1,15 @@
+import logging
 from pathlib import Path
 
 from langchain_community.vectorstores import FAISS, SupabaseVectorStore
+from postgrest.exceptions import APIError
 
 from app.config import settings
 from app.embeddings.supabase_client import get_supabase_client
 
 _UPSERT_BATCH_SIZE = 20
 
+logger = logging.getLogger(__name__)
 
 def create_vector_store(embedding, documents: list | None = None):
     provider = settings.vector_store_provider.lower()
@@ -30,10 +33,7 @@ def create_vector_store(embedding, documents: list | None = None):
                     for doc, vector in zip(batch, vectors)
                 ]
 
-                client.table(settings.supabase_table_name).upsert(
-                    rows,
-                    on_conflict="chunk_id",
-                ).execute()
+                _upsert_rows(client, rows)
 
                 print(f"  Upserted {min(i + _UPSERT_BATCH_SIZE, len(documents))}/{len(documents)} chunks...")
 
@@ -77,3 +77,33 @@ def create_vector_store(embedding, documents: list | None = None):
         )
 
     raise ValueError(f"For the vector_store_provider, choose between 'supabase' or 'faiss': {settings.vector_store_provider}")
+
+
+def _upsert_rows(client, rows: list[dict]) -> None:
+    """Upsert rows, isolating only chunks rejected for unsupported Postgres text."""
+    try:
+        client.table(settings.supabase_table_name).upsert(
+            rows,
+            on_conflict="chunk_id",
+        ).execute()
+    except APIError as error:
+        if not _is_unsupported_text_error(error):
+            raise
+
+        if len(rows) == 1:
+            chunk_id = rows[0].get("metadata", {}).get("chunk_id")
+            logger.warning("Skipping chunk %s after Supabase rejected text payload: %s", chunk_id, error)
+            return
+
+        mid = len(rows) // 2
+        _upsert_rows(client, rows[:mid])
+        _upsert_rows(client, rows[mid:])
+
+
+def _is_unsupported_text_error(error: APIError) -> bool:
+    """Return true for PostgREST errors caused by values Postgres cannot store as text."""
+    return (
+        getattr(error, "code", None) == "22P05"
+        or "unsupported Unicode escape sequence" in str(error)
+        or "\\u0000 cannot be converted to text" in str(error)
+    )

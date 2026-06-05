@@ -48,3 +48,24 @@ class TestChunksToDocuments:
         docs = chunks_to_documents(chunks)
         assert len(docs) == 3
         assert docs[2].page_content == "text 2"
+
+    def test_strips_nul_characters_from_content_and_metadata(self):
+        docs = chunks_to_documents([
+            _chunk(
+                text="Hello\x00 world",
+                title="Bad\x00 title",
+                heading_path=["Intro\x00"],
+                metadata={
+                    "url": "https://example.com/\x00bad",
+                    "nested": {"value": "keep\x00going"},
+                    "items": ["one\x00", "two"],
+                },
+            )
+        ])
+
+        assert docs[0].page_content == "Hello world"
+        assert docs[0].metadata["title"] == "Bad title"
+        assert docs[0].metadata["heading_path"] == ["Intro"]
+        assert docs[0].metadata["url"] == "https://example.com/bad"
+        assert docs[0].metadata["nested"]["value"] == "keepgoing"
+        assert docs[0].metadata["items"] == ["one", "two"]

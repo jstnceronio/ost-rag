@@ -2,7 +2,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import logging
 from typing import Any
-
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,6 @@ class TracingService:
                     ", ".join(missing),
                 )
             return
-
-        from langfuse import Langfuse
-        from langfuse.langchain import CallbackHandler
 
         kwargs: dict[str, Any] = {
             "public_key": settings.langfuse_public_key,

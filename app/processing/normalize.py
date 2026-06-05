@@ -29,7 +29,7 @@ class _ConfluenceHTMLParser(HTMLParser):
         self._heading_level: int | None = None
         self._heading_parts: list[str] = []
         self._paragraph_parts: list[str] = []
-        self._list_stack: list[str] = []
+        self._list_stack: list[dict[str, int | str]] = []
         self._list_item_parts: list[str] = []
         self._in_list_item = False
         self._in_pre = False
@@ -68,7 +68,7 @@ class _ConfluenceHTMLParser(HTMLParser):
 
         if tag in {"ul", "ol"}:
             self._flush_paragraph()
-            self._list_stack.append("-")
+            self._list_stack.append({"tag": tag, "index": 0})
             return
 
         if tag == "li":
@@ -191,7 +191,12 @@ class _ConfluenceHTMLParser(HTMLParser):
         if not text:
             return
         indent = "  " * max(len(self._list_stack) - 1, 0)
-        bullet = self._list_stack[-1] if self._list_stack else "-"
+        bullet = "-"
+        if self._list_stack:
+            current_list = self._list_stack[-1]
+            if current_list["tag"] == "ol":
+                current_list["index"] = int(current_list["index"]) + 1
+                bullet = f"{current_list['index']}."
         self._add_section_block(f"{indent}{bullet} {text}")
 
     def _flush_pre(self) -> None:
