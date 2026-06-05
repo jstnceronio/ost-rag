@@ -1,363 +1,252 @@
 # Confluence RAG Bot
 
-A production-ready Retrieval-Augmented Generation (RAG) backend that turns your Confluence wiki into an intelligent Q&A API. It fetches and indexes Confluence pages, stores embeddings in Supabase (or locally with FAISS), reranks retrieved chunks with an LLM, and answers natural-language questions using OpenAI. It is complete with conversation history, semantic caching, and API-key authentication.
+Dieses Dokument beschreibt die Features und Funktionsweise unseres RAG Bots. 
+Beschrieben werden auch einige Entscheide die wir bezüglich Chunking, Evaluation, Security & weitere Themen getroffen haben.
 
----
+## 1. Inhaltsverzeichnis
 
-## Table of Contents
+- [2. Motivation](#2-motivation)
+- [3. Übersicht der Architektur](#3-übersicht-der-architektur)
+- [4. Features](#4-features)
+- [5. Projekt starten](#5-projekt-starten)
+- [6. Indexing Flow](#6-indexing-flow)
+- [7. Confluence Ingestion](#7-confluence-ingestion)
+- [8. Inhalt Normalisierung](#8-inhalt-normalisierung)
+- [9. Attachment Parsing](#9-attachment-parsing)
+- [10. Chunking Strategie](#10-chunking-strategie)
+- [11. Retrieval](#11-retrieval)
+- [12. Reranking](#12-reranking)
+- [13. Chat Flow](#13-chat-flow)
+- [14. Observability](#14-observability)
+- [15. Evaluation](#15-evaluation)
 
-- [Architecture Overview](#architecture-overview)
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Vector Store Providers](#vector-store-providers)
-- [Running Locally](#running-locally)
-- [Indexing](#indexing)
-- [API Reference](#api-reference)
-- [Security](#security)
-- [Scripts](#scripts)
-- [Project Structure](#project-structure)
+## 2. Motivation
 
----
+Viele Unternehmen (wie auch die OST) speichern enorm viele Informationen in Confluence. Je nach Inhalt wird es enorm schwierig die richtige Seite zu finden, welche die Infos beinhaltet, die man sucht.
 
-## Architecture Overview
+Das Ziel dieses Projekts ist es, dieses Wissen über eine API im Chat-Style zugänglich zu machen, wobei die Antworten stets auf der ursprünglichen Dokumentation basieren sollen.
+
+Wir haben das Projekt in vier Hauptprobleme aufgeteilt:
+1. Wissen aus Confluence zuverlässig einlesen.
+2. Inhalte und Anhänge für die Suche in nützliche Abschnitte umwandeln.
+3. Nur die für die Frage eines Benutzers relevantesten Abschnitte abrufen.
+4. Antworten generieren, die den abgerufenen Quellen treu bleiben, und diese Quellen dem User offenlegen.
+
+## 3. Übersicht der Architektur
 
 ```
 Confluence API
       │
       ▼
- ConfluenceClient          ← fetches pages via REST API
+ ConfluenceClient          ← Confluence Seiten werden via REST API geholt
       │
       ▼
-  Normalizer + Chunker     ← strips HTML, extracts headings, splits into chunks
+  Normalizer + Chunker     ← HTML wird normalisiert, Headings extrahiert und in Chunks aufgeteilt
       │
       ▼
- IndexingService           ← embeds chunks with text-embedding-3-small
+ IndexingService           ← chunks werden mit text-embedding-3-small embedded
       │
-      ├──► Supabase (pgvector)   ← production vector store + semantic cache
-      └──► FAISS (local)         ← lightweight local vector store
+      ├──► Supabase (pgvector)   ← unser Vector-Store & semantischer Cache in der "Prod"
+      └──► FAISS (local)         ← wurde lokal getestet um das Chunking möglichst effizient zu testen
                 │
                 ▼
-         RetrieverService        ← similarity search at query time
+         RetrieverService        ← macht Similarity-Search
                 │
                 ▼
-          RerankerService        ← optional LLM relevance filter, top N chunks
+          RerankerService        ← Reranker filtert top N chunks nach Relevanz, kann über die Settings ausgeschaltet werden
                 │
                 ▼
-          LLMService             ← GPT-4.1 answers strictly from retrieved context
+          LLMService             ← GPT-4.1 (z.B.) antwortet mit gegebenem Kontext
                 │
                 ▼
-         FastAPI /chat           ← authenticated, rate-limited REST endpoint
+         FastAPI /chat           ← durch API-Token geschützter, rate-limitierter REST Endpunkt
 ```
 
----
+## 4. Features
 
-## Features
+| Funktion                        | Details                                                                                                                                                                              |
+|---------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **RAG-Pipeline**                | Confluence-Seiten → HTML-Normalisierung → Chunking → Vektor-Embeddings → Similarity Search → LLM-Reranking → Antwort                                                                 |
+| **Optionen für Vector Store**   | Supabase (pgvector) für Produktion, FAISS für lokale Nutzung                                                                                                                         |
+| **LLM-Reranking**               | Chunks werden nach Fragenrelevanz und Antwortunterstützung bewertet; nur die am höchsten neu gerankten Chunks werden an den Antwort-Prompt übergeben                                 |
+| **Semantischer Cache**          | Identische oder nahezu identische Fragen (≥ 0,98 Kosinusähnlichkeit) werden sofort aus dem Cache beantwortet. Cache wird invalidiert, wenn Quellseiten aktualisiert werden           |
+| **Langfuse-Tracing**            | Optionale Traces für Anfrage, Retrieval, Reranking, Cache und LangChain-LLM, wenn Langfuse-Zugangsdaten konfiguriert sind                                                            |
+| **Konversationsverlauf**        | Multi-Turn-Chat: Der Verlauf wird in den Prompt eingefügt. Der Cache wird umgangen, wenn ein Verlauf vorhanden ist                                                                   |
+| **Schutz vor Prompt Injection** | Kontext, Fragen und Verlauf werden jeweils in Sektionen eingeschlossen, mit Systemanweisungen, die verhindern, dass das LLM Benutzerinhalte als Anweisungen behandelt                |
+| **`POST /sync`-Endpunkt**       | Löst eine Indexierung eines beliebigen Confluence-Bereichs (oder einzelne Seite) aus; führt Upserts (nur auf dem Remote) auf `chunk_id` aus, sodass der Aufruf wiederholt sicher ist |
+| **API-Key-Authentifizierung**   | `X-API-Key`-Header wird bei jeder Anfrage benötigt                                                                                                                                   |
+| **Rate Limiting**               | `/chat` — 20 Anfragen/Min., 300 Anfragen/Tag; `/sync` — 5 Anfragen/Min., pro IP-Adresse (über SlowAPI)                                                                               |
 
-| Feature | Details |
-|---|---|
-| **RAG Pipeline** | Confluence pages → HTML normalisation → semantic chunking → vector embeddings → similarity search → optional LLM reranking → answer generation |
-| **Dual Vector Store** | Supabase (pgvector) for production, FAISS for local/offline use |
-| **LLM Reranking** | Retrieved candidates are scored for question relevance and answer support; only the top reranked chunks are passed into the answer prompt |
-| **Semantic Cache** | Identical or near-identical questions (≥ 0.98 cosine similarity) are served instantly from cache, with automatic cache invalidation when source pages are updated |
-| **Langfuse Tracing** | Optional request, retrieval, reranking, cache, and LangChain LLM traces when Langfuse credentials are configured |
-| **Conversation History** | Stateful multi-turn chat; history is injected into the prompt with structural delimiters. Cache is bypassed when history is present |
-| **Prompt Injection Protection** | Context, questions, and history are each wrapped in explicit delimiters with system-level instructions that prevent the LLM from treating user content as directives |
-| **`POST /sync` Endpoint** | Triggers an on-demand index of any Confluence space; upserts on `chunk_id` so it is safe to call repeatedly |
-| **Daily Sync Scheduler** | Background async task that automatically re-indexes the configured space every morning at a configurable hour; runs inside the server process with no external dependencies |
-| **API Key Auth** | `X-API-Key` header enforced on every request via constant-time HMAC comparison |
-| **Rate Limiting** | `/chat` — 20 req/min, 300 req/day; `/sync` — 5 req/min, per IP (via SlowAPI) |
-| **CORS** | Configurable allowed origins; only `POST` and required headers are permitted |
+## 5. Projekt starten
 
----
-
-## Prerequisites
-
-- Python ≥ 3.12
-- [`uv`](https://docs.astral.sh/uv/) (recommended) or `pip`
-- A Confluence instance with a valid API token
-- An OpenAI API key
-- **For production:** A Supabase project (cloud or self-hosted) with `pgvector` enabled
-
----
-
-## Installation
+Um die API lokal zu starten ist es wichtig als Erstes die .env Variablen zu setzen.
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd confluence-rag-bot
-
-# Install dependencies with uv (recommended)
 uv sync
-
-# Or with pip
-pip install -e .
-```
-
----
-
-## Configuration
-
-Copy the example environment file and fill in your values:
-
-```bash
 cp .env.example .env
 ```
 
-| Variable | Description |
-|---|---|
-| `OPENAI_API_KEY` | Your OpenAI API key |
-| `CONFLUENCE_API_KEY` | Confluence personal access token |
-| `CONFLUENCE_BASE_URL` | Base URL of your Confluence instance (e.g. `https://wiki.example.com/`) |
-| `CONFLUENCE_SPACE_ID` | Space ID the daily scheduler syncs automatically |
-| `SYNC_HOUR` | Hour (0–23, server local time) the daily sync fires — default `6` |
-| `API_KEY` | Secret key clients must send in the `X-API-Key` header |
-| `VECTOR_STORE_PROVIDER` | `supabase` or `faiss` |
-| `SUPABASE_URL` | URL of your Supabase project |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key |
-| `SUPABASE_TABLE_NAME` | Table that stores document embeddings |
-| `FAISS_INDEX_PATH` | Local path for the FAISS index (default: `./data/faiss_index`) |
-| `RERANKER_ENABLED` | Enables the LLM reranker before answer generation (default: `true`) |
-| `RERANKER_TOP_N` | Maximum number of reranked chunks passed to the answer prompt (default: `5`) |
-| `LANGFUSE_ENABLED` | Enables Langfuse tracing when public and secret keys are also set (default: `false`) |
-| `LANGFUSE_PUBLIC_KEY` | Langfuse project public key |
-| `LANGFUSE_SECRET_KEY` | Langfuse project secret key |
-| `LANGFUSE_BASE_URL` | Langfuse host URL, for example `https://cloud.langfuse.com` |
-| `ALLOWED_CORS_ORIGINS` | Comma-separated allowed origins (default: `*`) |
+Im `.env` müssen mindestens `OPENAI_API_KEY`, `CONFLUENCE_API_KEY`, `CONFLUENCE_BASE_URL`, `API_KEY` und je nach Vector-Store die Supabase- oder FAISS-Konfiguration gesetzt werden.
 
----
-
-## Vector Store Providers
-
-### Supabase (Production)
-
-1. Enable the `pgvector` extension in your Supabase project.
-2. Create the documents table and the `match_documents` RPC function. Refer to your Supabase project's SQL editor and apply the required schema (vector column dimensions must match `text-embedding-3-small` → **1536**).
-3. Set `VECTOR_STORE_PROVIDER=supabase` and provide the three `SUPABASE_*` variables.
-
-### FAISS (Local / Offline)
-
-1. Set `VECTOR_STORE_PROVIDER=faiss`.
-2. Optionally set `FAISS_INDEX_PATH` to control where the index is persisted on disk.
-
-The index is created on first run and loaded automatically on subsequent runs.
-
----
-
-## Running Locally
+Gestartet wird die FastAPI-App mit:
 
 ```bash
-# With uv
-uv run uvicorn app.api.chat:app --reload --port 3000
-
-# Or directly
-uvicorn app.api.chat:app --reload --port 3000
+uv run uvicorn app.api.chat:app --host 0.0.0.0 --port 3000
 ```
 
-The API will be available at `http://localhost:3000`.
+Nach dem Start sollte zuerst `POST /sync` mit dem `X-API-Key`-Header ausgeführt werden, damit Inhalte indexiert werden. Danach kann der Chat über `POST /chat` verwendet werden.
 
----
+## 6. Indexing Flow
 
-## Indexing
+Gestartet wird die Indexierung über ```POST /sync```, welche in ```app/services/sync_service.py``` implementiert wird.
 
-### Daily Scheduler
+![indexing_flow.png](docs/indexing_flow.png)
 
-At startup the server spawns a background task that sleeps until the next `SYNC_HOUR` and then runs a full index of `CONFLUENCE_SPACE_ID`. It logs the scheduled time once on startup and once when the sync completes — no periodic polling, no spam.
+Remote (auf Coolify) haben wir für die Indexierung einen Cron-Job eingerichtet, welcher regelmässig den `/sync` Endpunkt anstösst.
 
-### `POST /sync` — On-Demand Indexing
+## 7. Confluence Ingestion
 
-To trigger an immediate sync without restarting the server:
+Der Confluence Client wurde in ```app/confluence/client.py``` implementiert.
+Interessante Details:
+- Requests teilen eine "shared authenticated" ```requests.Session```
+- Confluence-API Aufrufe haben ein 60 Sekunden timeout
+- Schlägt ein Request fehl, versuchen wir es dreimal erneut (Ausnahme ConfluenceAPIError). Aus eigener Erfahrung haben wir gemerkt, dass bei gewissen Fehlern es meist nach einem Retry wieder funktioniert.
 
-```bash
-curl -X POST http://localhost:3000/sync \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your-api-key>" \
-  -d '{"space_id": "720898"}'
+Seiten können nach Bereich (Space) oder nach Seiten-ID geholt werden. Wenn eine Seite weitere Seiten beinhaltet werden auch diese heruntergeladen.
 
-# → {"pages_indexed": 42, "chunks_indexed": 317}
+Wenn das Herunterladen von Anhängen für eine Seite fehlschlägt, loggt das System den Fehler und fährt mit der Indexierung der verbleibenden Seiten fort. Ein beschädigter Anhang sollte nicht verhindern, dass der Rest der Wissensbasis indexiert wird.
+
+## 8. Inhalt Normalisierung
+
+Der Confluence Page-Body besteht aus HTML. Der Parser `app/processing/normalize.py` konvertiert dies in normalisierten Text und Sektionen mit Headers.
+
+Die Confluence Seiten können auch komplizierteren Inhalt beinhalten, z.B. durch Plugins. Diese Inhalte haben wir für diesen MVP ignoriert und uns auf die "standard" HTML Strukturen fokussiert, wie Headings, Paragrafen, Listen, Tabellen etc.
+
+Der parser verwendet einen `heading_stack`, so dass der Text unter einem Heading diesem zugewiesen bleibt. Am besten ist dies anhand eines Beispiels ersichtlich:
+```
+<h2>Access</h2>
+<h3>VPN</h3>
+<p>Use the OSR VPN when accessing internal systems.</p>
+```
+Wird zu einer Section mit diesem Heading-Path:
+```
+["Access", "VPN"]
 ```
 
-Pass an optional `limit` to index only the first N pages:
+Dieser Heading-Path wird in den Metadaten des Chunks gespeichert.
 
-```bash
--d '{"space_id": "720898", "limit": 10}'
+## 9. Attachment Parsing
+
+Viele Confluence Seiten beinhalten Anhänge, wie z.B. PDFs. Deshalb haben wir es als wichtig erachtet auch diese einzubeziehen. 
+Zurzeit unterstützen wir die folgenden Dateiformate:
+
+- PDF
+- Markdown
+- DOCX
+- JSON
+- plain text
+- CSV
+- XML
+- YAML
+- SQL
+
+Nicht unterstütze Formate werden übersprungen.
+
+Attachment-Chunks beinhalten den Titel der Parent Seite, Dateiname und Dateityp. Dies verbessert den Retrieval-Prozess, denn so kann der Kontext des Inhalts besser bestimmt werden.
+
+## 10. Chunking Strategie
+
+Den grössten Einfluss hatte unserer Erfahrung nach unser Chunking. Deshalb haben wir hier auch mit verschiedenen Ansätzen experimentiert. Am meisten Erfolg hatten wir mit der Parent-Child Strategie.
+
+- Benachbarte Blöcke unter derselben Überschrift werden zu übergeordneten Abschnitten zusammengefasst
+- Kompakte untergeordnete Chunks werden fürs Retrieval embedded
+- Die Chunks enthalten den Kontext des übergeordneten Abschnitts in den Metadaten
+- Die Antwortgenerierung erhält den übergeordneten Chunk, sofern dieser verfügbar ist
+- Dadurch bleibt der Abruf präzise, während das Antwortmodell genügend Kontext für Anleitungen, Listen und verwandte Absätze erhält.
+
+Mit dieser Strategie können wir auch besser mit Listen umgehen (von diesen gibt es einige im OST-Confluence).
+
+## 11. Retrieval
+
+Retrieval ist implementiert in `app/embeddings/retriever.py`.
+
+Der Retriever...
+
+- Erstellt das konfigurierte Embedding-Model
+- Lädt den konfigurierten Vector-Store
+- Gibt einen LangChain Retriever zurück
+- Nutzt Similarity-Search
+- Holt die top 20 Kandidaten
+
+Wir holen absichtlich viele Einträge, so geben wir dem Reranker genug, um diese grosszügig zu filtern und die bestmögliche Antwort zu erstellen.
+
+## 12. Reranking
+
+Der Reranker wurde in `app/reranking/reranker.py` implementiert und fordert von einem LLM ein JSON, dass strikt dieser Form entspricht:
 ```
-
-Chunks are upserted on `chunk_id`, so syncing the same space repeatedly is safe and idempotent.
-
----
-
-## API Reference
-
-### `POST /chat`
-
-**Headers**
-
-| Header | Value |
-|---|---|
-| `Content-Type` | `application/json` |
-| `X-API-Key` | Your configured `API_KEY` |
-
-**Request Body**
-
-```json
 {
-  "question": "How do I set up VPN?",
-  "history": [
-    { "role": "user",      "content": "What is the company VPN?" },
-    { "role": "assistant", "content": "The company VPN is..." }
-  ]
-}
-```
-
-| Field | Type | Constraints |
-|---|---|---|
-| `question` | `string` | 1–2000 chars |
-| `history` | `array` | max 10 turns |
-| `history[].role` | `"user"` \| `"assistant"` | — |
-| `history[].content` | `string` | 1–500 chars |
-
-**Response Body**
-
-```json
-{
-  "answer": "To set up VPN, follow these steps...",
-  "sources": [
+  "results": [
     {
-      "title": "VPN Setup Guide",
-      "doc_id": "123456",
-      "chunk_id": "123456-3",
-      "heading_path": ["Network", "VPN", "Setup"],
-      "url": "https://wiki.example.com/pages/viewpage.action?pageId=123456"
+      "index": 0,
+      "relevance": 0.91,
+      "supports_answer": true,
+      "reason": "contains the relevant module list"
     }
   ]
 }
 ```
 
-**Errors**
+Wir nehmen daraus nur Antworten wo `supports_answer`=True. Results werden nach dem Config-Wert `RERANKER_TOP_N` limitiert. Default ist bei 5.
+Falls trotz den strikten Anweisungen ein invalides JSON ankommt, machen wir ein Fallback auf die ersten `top_n` Dokumente.
 
-| Status | Meaning |
-|---|---|
-| `400` | Empty or invalid question |
-| `401` | Missing or invalid `X-API-Key` |
-| `429` | Rate limit exceeded |
-| `500` | Chat service not initialised |
+## 13. Chat Flow
 
----
+Unser Chat-Flow wird in `app/services/chat_service.py` orchestriert. Dieser zeigen wir am besten am Mermaid-Diagram.
 
-### `POST /sync`
+![chat_flow.png](docs/chat_flow.png)
 
-**Headers**
+## 14. Observability
 
-| Header | Value |
-|---|---|
-| `Content-Type` | `application/json` |
-| `X-API-Key` | Your configured `API_KEY` |
+Für das Tracing verwenden wir wie in der Vorlesung Langfuse. Dieses könnte optional auch mit der Config ausgeschaltet werden, wenn eine bessere Performance gewünscht ist.
 
-**Request Body**
+Tracen tun wir Folgendes:
+- Chat-Request
+- Cache-Lookup
+- Verlaufsbasierte Umformulierung der Abfrage
+- Retrieval
+- Reranking
+- LLM-Generierung über LangChain-Callbacks
 
-```json
-{ "space_id": "720898", "limit": 50 }
+
+## 15. Evaluation
+
+Zur Evaluierung verwenden wir RAGAS.
+
+Die Dataset-Datei ist im JSONL-Format aufgebaut. Jede Zeile entspricht einem Evaluationsfall.
+
+Standardmässig verwendet der Runner `resources/datasets/generated_cases.jsonl`, da dieses Dataset
+Referenzantworten enthält und dadurch alle Metriken berechnet werden können.
+
+Um Testfälle zu generieren, verwenden wir dieses Skript:
+```bash
+uv run python scripts/generate_testcases.py --space-id 720898 --page-limit 20 --min-chars 500
 ```
 
-To index one page and all of its nested subpages, use the root page ID instead:
+Diese Metriken werden immer berechnet:
 
-```json
-{ "page_id": "123456789" }
-```
+- `faithfulness`
+- `answer_relevancy`
 
-| Field | Type | Constraints |
-|---|---|---|
-| `space_id` | `string` | optional; required if `page_id` is omitted |
-| `page_id` | `string` | optional; when set, indexes this page and its descendant pages |
-| `limit` | `integer` | optional, > 0 — omit to index the entire space |
+Diese nur bei vorhandener `reference_answer`:
 
-**Response Body**
-
-```json
-{ "pages_indexed": 42, "chunks_indexed": 317 }
-```
-
-**Errors**
-
-| Status | Meaning |
-|---|---|
-| `401` | Missing or invalid `X-API-Key` |
-| `404` | No pages found for the given space ID |
-| `429` | Rate limit exceeded (5/min) |
-
----
-
-## Security
-
-| Control | Implementation |
-|---|---|
-| **Authentication** | `X-API-Key` header, verified via `hmac.compare_digest` to prevent timing attacks |
-| **Rate Limiting** | SlowAPI — 20 req/min, 300 req/day per client IP |
-| **Input Validation** | Pydantic field constraints on question length and history depth |
-| **Prompt Injection** | Structural delimiters (`--- BEGIN/END CONTEXT ---`, `--- BEGIN/END QUESTION ---`, `--- BEGIN/END HISTORY TURN ---`) with explicit system instructions that treat injected text as plain data only |
-| **CORS** | Configurable allowlist; restricted to `POST` method and required headers |
-
----
-
-## Scripts
-
-### `scripts/test_retrieval.py`
-
-A debugging utility that runs a similarity search against the vector store and prints the top matching chunks with their metadata. Useful for verifying that indexing worked correctly.
+- `factual_correctness`
+- `context_precision`
+- `context_recall`
+- 
+Jeder Lauf schreibt die resultierenden Artefakte nach `resources/evaluation_runs/`.
 
 ```bash
-uv run scripts/test_retrieval.py
+uv run python -m app.evaluation.runner
 ```
 
-Edit `TEST_QUERY` at the top of the file to test different queries. This script checks raw vector retrieval; it does not apply the LLM reranker.
-
----
-
-## Project Structure
-
-```
-confluence-rag-bot/
-├── app/
-│   ├── api/
-│   │   ├── chat.py          # FastAPI app, lifespan, /chat endpoint
-│   │   ├── sync.py          # /sync endpoint
-│   │   ├── deps.py          # Shared auth — limiter + verify_api_key
-│   │   └── models.py        # Pydantic request/response models
-│   ├── confluence/
-│   │   ├── auth.py          # Builds authenticated requests session
-│   │   ├── client.py        # Confluence REST API client
-│   │   ├── errors.py        # Custom API error type
-│   │   ├── mapper.py        # Maps raw API payloads to internal models
-│   │   └── models.py        # ConfluencePage dataclass
-│   ├── embeddings/
-│   │   ├── factory.py       # Creates the embedding model
-│   │   ├── indexing.py      # IndexingService — embeds and stores chunks
-│   │   ├── retriever.py     # RetrieverService — similarity search
-│   │   ├── supabase_client.py # Supabase client singleton
-│   │   └── vector_store.py  # Supabase / FAISS vector store factory
-│   ├── reranking/
-│   │   ├── helpers.py       # Reranker prompt and document formatting
-│   │   ├── models.py        # Pydantic schema for reranker JSON output
-│   │   └── reranker.py      # RerankerService — LLM relevance selection
-│   ├── processing/
-│   │   ├── chunker.py       # Splits ParsedDocuments into LangChain Documents
-│   │   ├── mapper.py        # Maps chunks to metadata
-│   │   ├── models.py        # ParsedDocument dataclass
-│   │   └── normalize.py     # Parses Confluence HTML → clean text + headings
-│   ├── services/
-│   │   ├── cache_service.py # Semantic cache — check, save, validate, evict
-│   │   ├── chat_service.py  # Orchestrates cache, retrieval, reranking, and LLM
-│   │   ├── helpers.py       # Shared utilities (ChatResult, context builder)
-│   │   ├── llm_service.py   # LLMService — prompt construction and GPT call
-│   │   └── sync_service.py  # run_sync() + start_daily_sync() scheduler
-│   ├── config.py            # Pydantic Settings — all env vars in one place
-│   └── main.py              # Minimal entry-point (see /sync for indexing)
-├── scripts/
-│   └── test_retrieval.py    # Debug utility for vector search
-├── .env.example             # Environment variable template
-├── Procfile                 # Production process definition (uvicorn)
-└── pyproject.toml           # Project metadata and pinned dependencies
-```
+Bei den Unit-Tests haben wir auf eine Testabdeckung von 60% + abgezielt. 
